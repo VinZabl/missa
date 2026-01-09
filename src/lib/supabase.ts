@@ -55,6 +55,7 @@ export type Database = {
           discount_start_date: string | null;
           discount_end_date: string | null;
           discount_active: boolean;
+          custom_fields: any; // JSONB array of CustomField
           created_at: string;
           updated_at: string;
         };
@@ -71,6 +72,7 @@ export type Database = {
           discount_start_date?: string | null;
           discount_end_date?: string | null;
           discount_active?: boolean;
+          custom_fields?: any; // JSONB array of CustomField
           created_at?: string;
           updated_at?: string;
         };
@@ -87,6 +89,7 @@ export type Database = {
           discount_start_date?: string | null;
           discount_end_date?: string | null;
           discount_active?: boolean;
+          custom_fields?: any; // JSONB array of CustomField
           created_at?: string;
           updated_at?: string;
         };
@@ -97,6 +100,7 @@ export type Database = {
           menu_item_id: string;
           name: string;
           price: number;
+          description: string | null;
           created_at: string;
         };
         Insert: {
@@ -104,6 +108,7 @@ export type Database = {
           menu_item_id: string;
           name: string;
           price: number;
+          description?: string | null;
           created_at?: string;
         };
         Update: {
@@ -111,6 +116,7 @@ export type Database = {
           menu_item_id?: string;
           name?: string;
           price?: number;
+          description?: string | null;
           created_at?: string;
         };
       };

@@ -21,9 +21,9 @@ export const useSiteSettings = () => {
 
       // Transform the data into a more usable format
       const settings: SiteSettings = {
-        site_name: data.find(s => s.id === 'site_name')?.value || 'Just Cafè',
-        site_logo: data.find(s => s.id === 'site_logo')?.value || '/logo.jpg',
-        site_description: data.find(s => s.id === 'site_description')?.value || 'Welcome to Just Cafè — Your perfect coffee destination',
+        site_name: data.find(s => s.id === 'site_name')?.value || 'AmberKin x GamerXtream',
+        site_logo: data.find(s => s.id === 'site_logo')?.value || '/logo.png',
+        site_description: data.find(s => s.id === 'site_description')?.value || 'Welcome to AmberKin x GamerXtream — Your perfect game credits destination',
         currency: data.find(s => s.id === 'currency')?.value || '₱',
         currency_code: data.find(s => s.id === 'currency_code')?.value || 'PHP',
         delivery_enabled: data.find(s => s.id === 'delivery_enabled')?.value || 'true'

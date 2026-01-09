@@ -2,16 +2,81 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Just Cafe Custom Styles */
-/* Minimal helpers for cafe palette when needed outside tailwind tokens */
-.bg-cafe-cream { background-color: #FAF9F6; }
-.bg-cafe-beige { background-color: #F5F3F0; }
-.bg-cafe-light { background-color: #FEFCFB; }
-.text-cafe-accent { color: #9A6624; }
-.text-cafe-dark { color: #0B0A0A; }
-.border-cafe-accent { border-color: #9A6624; }
-.border-cafe-latte { border-color: #E8E3DC; }
-.ring-cafe-accent { --tw-ring-color: #9A6624; }
+/* In-Game Credits Theme Styles */
+/* Glassmorphism utilities */
+.glass {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.glass-strong {
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.glass-card {
+  background: rgba(10, 31, 46, 0.6);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(96, 165, 250, 0.3);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+}
+
+.glass-hover {
+  transition: all 0.3s ease;
+}
+
+.glass-hover:hover {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(96, 165, 250, 0.5);
+  box-shadow: 0 8px 32px 0 rgba(96, 165, 250, 0.2);
+}
+
+.package-card-hover {
+  transition: all 0.2s ease;
+}
+
+.package-card-hover:hover {
+  background: #1565A8 !important;
+  border: 2px solid #1565A8 !important;
+  box-shadow: 0 4px 12px 0 rgba(21, 101, 168, 0.4) !important;
+  transform: scale(1.02) !important;
+}
+
+.package-card-hover:hover .font-semibold,
+.package-card-hover:hover .text-gray-900,
+.package-card-hover:hover .text-gray-600,
+.package-card-hover:hover .text-base {
+  color: white !important;
+}
+
+/* Glow effects for in-game theme */
+.glow-blue {
+  box-shadow: 0 0 20px rgba(96, 165, 250, 0.5);
+}
+
+.glow-blue-strong {
+  box-shadow: 0 0 30px rgba(96, 165, 250, 0.8);
+}
+
+/* Text glow */
+.text-glow {
+  text-shadow: 0 0 10px rgba(96, 165, 250, 0.8);
+}
+
+/* Legacy cafe color helpers (for compatibility) */
+.bg-cafe-cream { background-color: #E0F2FE; }
+.bg-cafe-beige { background-color: #BAE6FD; }
+.bg-cafe-light { background-color: rgba(255, 255, 255, 0.1); }
+.text-cafe-accent { color: #60A5FA; }
+.text-cafe-dark { color: #E0F2FE; }
+.border-cafe-accent { border-color: #60A5FA; }
+.border-cafe-latte { border-color: rgba(96, 165, 250, 0.3); }
+.ring-cafe-accent { --tw-ring-color: #60A5FA; }
 
 /* Hide scrollbar for mobile nav */
 .scrollbar-hide {
@@ -37,4 +102,57 @@ img {
   top: -9999px;
   width: 1px;
   height: 1px;
+}
+
+/* Auto-fit text to one line */
+.text-fit-one-line {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: clamp(0.65rem, 2vw, 1rem);
+  max-width: 100%;
+}
+
+/* Scroll text animation for long game names */
+@keyframes scroll-text {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.animate-scroll-text {
+  animation: scroll-text 10s linear infinite;
+  display: inline-block;
+  will-change: transform;
+}
+
+/* Animated blob background */
+@keyframes blob {
+  0% {
+    transform: translate(0px, 0px) scale(1);
+  }
+  33% {
+    transform: translate(30px, -50px) scale(1.1);
+  }
+  66% {
+    transform: translate(-20px, 20px) scale(0.9);
+  }
+  100% {
+    transform: translate(0px, 0px) scale(1);
+  }
+}
+
+.animate-blob {
+  animation: blob 7s infinite;
+}
+
+.animation-delay-2000 {
+  animation-delay: 2s;
+}
+
+.animation-delay-4000 {
+  animation-delay: 4s;
 }

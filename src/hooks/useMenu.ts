@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { MenuItem } from '../types';
+import { MenuItem, CustomField } from '../types';
 
 export const useMenu = () => {
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
@@ -33,8 +33,8 @@ export const useMenu = () => {
           (!discountStart || now >= discountStart) && 
           (!discountEnd || now <= discountEnd);
         
-        // Calculate effective price
-        const effectivePrice = isDiscountActive && item.discount_price ? item.discount_price : item.base_price;
+        // discount_price now stores percentage (0-100)
+        const discountPercentage = item.discount_price !== null ? item.discount_price : undefined;
 
         return {
           id: item.id,
@@ -45,23 +45,21 @@ export const useMenu = () => {
           popular: item.popular,
           available: item.available ?? true,
           image: item.image_url || undefined,
-          discountPrice: item.discount_price || undefined,
+          discountPercentage,
           discountStartDate: item.discount_start_date || undefined,
           discountEndDate: item.discount_end_date || undefined,
           discountActive: item.discount_active || false,
-          effectivePrice,
-          isOnDiscount: isDiscountActive,
+          // Legacy field for backward compatibility
+          discountPrice: item.discount_price || undefined,
+          effectivePrice: item.base_price, // Not used anymore, but kept for compatibility
+          isOnDiscount: isDiscountActive && discountPercentage !== undefined,
           variations: item.variations?.map(v => ({
             id: v.id,
             name: v.name,
-            price: v.price
+            price: v.price,
+            description: v.description || undefined
           })) || [],
-          addOns: item.add_ons?.map(a => ({
-            id: a.id,
-            name: a.name,
-            price: a.price,
-            category: a.category
-          })) || []
+          customFields: (item.custom_fields as CustomField[]) || []
         };
       }) || [];
 
@@ -82,16 +80,18 @@ export const useMenu = () => {
         .from('menu_items')
         .insert({
           name: item.name,
-          description: item.description,
+          description: item.description || null,
           base_price: item.basePrice,
           category: item.category,
           popular: item.popular || false,
           available: item.available ?? true,
           image_url: item.image || null,
-          discount_price: item.discountPrice || null,
+          // Store discountPercentage in discount_price column (repurposed)
+          discount_price: item.discountPercentage !== undefined ? item.discountPercentage : null,
           discount_start_date: item.discountStartDate || null,
           discount_end_date: item.discountEndDate || null,
-          discount_active: item.discountActive || false
+          discount_active: item.discountActive || false,
+          custom_fields: item.customFields || []
         })
         .select()
         .single();
@@ -106,28 +106,14 @@ export const useMenu = () => {
             item.variations.map(v => ({
               menu_item_id: menuItem.id,
               name: v.name,
-              price: v.price
+              price: v.price,
+              description: v.description || null
             }))
           );
 
         if (variationsError) throw variationsError;
       }
 
-      // Insert add-ons if any
-      if (item.addOns && item.addOns.length > 0) {
-        const { error: addOnsError } = await supabase
-          .from('add_ons')
-          .insert(
-            item.addOns.map(a => ({
-              menu_item_id: menuItem.id,
-              name: a.name,
-              price: a.price,
-              category: a.category
-            }))
-          );
-
-        if (addOnsError) throw addOnsError;
-      }
 
       await fetchMenuItems();
       return menuItem;
@@ -144,24 +130,25 @@ export const useMenu = () => {
         .from('menu_items')
         .update({
           name: updates.name,
-          description: updates.description,
+          description: updates.description !== undefined ? updates.description : null,
           base_price: updates.basePrice,
           category: updates.category,
           popular: updates.popular,
           available: updates.available,
           image_url: updates.image || null,
-          discount_price: updates.discountPrice || null,
+          // Store discountPercentage in discount_price column (repurposed)
+          discount_price: updates.discountPercentage !== undefined ? updates.discountPercentage : null,
           discount_start_date: updates.discountStartDate || null,
           discount_end_date: updates.discountEndDate || null,
-          discount_active: updates.discountActive
+          discount_active: updates.discountActive,
+          custom_fields: updates.customFields !== undefined ? updates.customFields : undefined
         })
         .eq('id', id);
 
       if (itemError) throw itemError;
 
-      // Delete existing variations and add-ons
+      // Delete existing variations
       await supabase.from('variations').delete().eq('menu_item_id', id);
-      await supabase.from('add_ons').delete().eq('menu_item_id', id);
 
       // Insert new variations
       if (updates.variations && updates.variations.length > 0) {
@@ -171,28 +158,14 @@ export const useMenu = () => {
             updates.variations.map(v => ({
               menu_item_id: id,
               name: v.name,
-              price: v.price
+              price: v.price,
+              description: v.description || null
             }))
           );
 
         if (variationsError) throw variationsError;
       }
 
-      // Insert new add-ons
-      if (updates.addOns && updates.addOns.length > 0) {
-        const { error: addOnsError } = await supabase
-          .from('add_ons')
-          .insert(
-            updates.addOns.map(a => ({
-              menu_item_id: id,
-              name: a.name,
-              price: a.price,
-              category: a.category
-            }))
-          );
-
-        if (addOnsError) throw addOnsError;
-      }
 
       await fetchMenuItems();
     } catch (err) {

@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
-import { Plus, Edit, Trash2, Save, X, ArrowLeft, Coffee, TrendingUp, Package, Users, Lock, FolderOpen, CreditCard, Settings } from 'lucide-react';
-import { MenuItem, Variation, AddOn } from '../types';
-import { addOnCategories } from '../data/menuData';
+import { Plus, Edit, Trash2, Save, X, ArrowLeft, TrendingUp, Package, Users, Lock, FolderOpen, CreditCard, Settings } from 'lucide-react';
+import { MenuItem, Variation, CustomField } from '../types';
 import { useMenu } from '../hooks/useMenu';
-import { useCategories, Category } from '../hooks/useCategories';
+import { useCategories } from '../hooks/useCategories';
 import ImageUpload from './ImageUpload';
 import CategoryManager from './CategoryManager';
 import PaymentMethodManager from './PaymentMethodManager';
@@ -24,13 +23,12 @@ const AdminDashboard: React.FC = () => {
   const [showBulkActions, setShowBulkActions] = useState(false);
   const [formData, setFormData] = useState<Partial<MenuItem>>({
     name: '',
-    description: '',
     basePrice: 0,
     category: 'hot-coffee',
     popular: false,
     available: true,
     variations: [],
-    addOns: []
+    customFields: []
   });
 
   const handleAddItem = () => {
@@ -38,13 +36,12 @@ const AdminDashboard: React.FC = () => {
     const defaultCategory = categories.length > 0 ? categories[0].id : 'dim-sum';
     setFormData({
       name: '',
-      description: '',
       basePrice: 0,
       category: defaultCategory,
       popular: false,
       available: true,
       variations: [],
-      addOns: []
+      customFields: []
     });
   };
 
@@ -68,16 +65,43 @@ const AdminDashboard: React.FC = () => {
   };
 
   const handleSaveItem = async () => {
-    if (!formData.name || !formData.description || !formData.basePrice) {
+    if (!formData.name) {
       alert('Please fill in all required fields');
       return;
     }
 
+    // Currency packages are required
+    if (!formData.variations || formData.variations.length === 0) {
+      alert('Please add at least one currency package');
+      return;
+    }
+
+    // Validate currency packages
+    const invalidPackages = formData.variations.filter(v => !v.name || v.price <= 0);
+    if (invalidPackages.length > 0) {
+      alert('Please fill in all currency package names and set valid prices (greater than 0)');
+      return;
+    }
+
+    // Validate discount percentage if enabled
+    if (formData.discountActive && formData.discountPercentage !== undefined) {
+      if (formData.discountPercentage < 0 || formData.discountPercentage > 100) {
+        alert('Discount percentage must be between 0 and 100');
+        return;
+      }
+    }
+
     try {
+      // Set basePrice to 0 since we don't use it anymore
+      const itemData = {
+        ...formData,
+        basePrice: 0
+      };
+
       if (editingItem) {
-        await updateMenuItem(editingItem.id, formData);
+        await updateMenuItem(editingItem.id, itemData);
       } else {
-        await addMenuItem(formData as Omit<MenuItem, 'id'>);
+        await addMenuItem(itemData as Omit<MenuItem, 'id'>);
       }
       setCurrentView('items');
       setEditingItem(null);
@@ -178,7 +202,8 @@ const AdminDashboard: React.FC = () => {
     const newVariation: Variation = {
       id: `var-${Date.now()}`,
       name: '',
-      price: 0
+      price: 0,
+      description: ''
     };
     setFormData({
       ...formData,
@@ -197,29 +222,35 @@ const AdminDashboard: React.FC = () => {
     setFormData({ ...formData, variations: updatedVariations });
   };
 
-  const addAddOn = () => {
-    const newAddOn: AddOn = {
-      id: `addon-${Date.now()}`,
-      name: '',
-      price: 0,
-      category: 'extras'
+  // Custom Fields Management
+  const addCustomField = () => {
+    const newField: CustomField = {
+      label: '',
+      key: '',
+      required: false,
+      placeholder: ''
     };
     setFormData({
       ...formData,
-      addOns: [...(formData.addOns || []), newAddOn]
+      customFields: [...(formData.customFields || []), newField]
     });
   };
 
-  const updateAddOn = (index: number, field: keyof AddOn, value: string | number) => {
-    const updatedAddOns = [...(formData.addOns || [])];
-    updatedAddOns[index] = { ...updatedAddOns[index], [field]: value };
-    setFormData({ ...formData, addOns: updatedAddOns });
+  const updateCustomField = (index: number, field: keyof CustomField, value: string | boolean) => {
+    const updatedFields = [...(formData.customFields || [])];
+    updatedFields[index] = { ...updatedFields[index], [field]: value };
+    // Auto-generate key from label if key is empty
+    if (field === 'label' && !updatedFields[index].key) {
+      updatedFields[index].key = value.toString().toLowerCase().replace(/\s+/g, '_');
+    }
+    setFormData({ ...formData, customFields: updatedFields });
   };
 
-  const removeAddOn = (index: number) => {
-    const updatedAddOns = formData.addOns?.filter((_, i) => i !== index) || [];
-    setFormData({ ...formData, addOns: updatedAddOns });
+  const removeCustomField = (index: number) => {
+    const updatedFields = formData.customFields?.filter((_, i) => i !== index) || [];
+    setFormData({ ...formData, customFields: updatedFields });
   };
+
 
   // Dashboard Stats
   const totalItems = menuItems.length;
@@ -232,7 +263,7 @@ const AdminDashboard: React.FC = () => {
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    if (password === 'JustCafe@Admin!2025') {
+    if (password === 'AmberKin@Admin!2025') {
       setIsAuthenticated(true);
       localStorage.setItem('beracah_admin_auth', 'true');
       setLoginError('');
@@ -343,24 +374,13 @@ const AdminDashboard: React.FC = () => {
           <div className="bg-white rounded-xl shadow-sm p-8">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
               <div>
-                <label className="block text-sm font-medium text-black mb-2">Item Name *</label>
+                <label className="block text-sm font-medium text-black mb-2">Item Name (Game Name) *</label>
                 <input
                   type="text"
                   value={formData.name || ''}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent"
-                  placeholder="Enter item name"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-black mb-2">Base Price *</label>
-                <input
-                  type="number"
-                  value={formData.basePrice || ''}
-                  onChange={(e) => setFormData({ ...formData, basePrice: Number(e.target.value) })}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent"
-                  placeholder="0"
+                  placeholder="Enter game name (e.g., Wild Rift, Mobile Legends)"
                 />
               </div>
 
@@ -404,17 +424,23 @@ const AdminDashboard: React.FC = () => {
 
             {/* Discount Pricing Section */}
             <div className="mb-8">
-              <h3 className="text-lg font-playfair font-medium text-black mb-4">Discount Pricing</h3>
+              <h3 className="text-lg font-playfair font-medium text-black mb-4">Discount (Percentage)</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                  <label className="block text-sm font-medium text-black mb-2">Discount Price</label>
+                  <label className="block text-sm font-medium text-black mb-2">Discount Percentage (%)</label>
                   <input
                     type="number"
-                    value={formData.discountPrice || ''}
-                    onChange={(e) => setFormData({ ...formData, discountPrice: Number(e.target.value) || undefined })}
+                    min="0"
+                    max="100"
+                    step="0.01"
+                    value={formData.discountPercentage || ''}
+                    onChange={(e) => setFormData({ ...formData, discountPercentage: Number(e.target.value) || undefined })}
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent"
-                    placeholder="Enter discount price"
+                    placeholder="Enter discount percentage (e.g., 10 for 10%)"
                   />
+                  <p className="text-xs text-gray-500 mt-1">
+                    This percentage will be applied to all currency packages for this item.
+                  </p>
                 </div>
 
                 <div className="flex items-center">
@@ -450,20 +476,10 @@ const AdminDashboard: React.FC = () => {
                 </div>
               </div>
               <p className="text-sm text-gray-500 mt-2">
-                Leave dates empty for indefinite discount period. Discount will only be active if "Enable Discount" is checked and current time is within the date range.
+                Leave dates empty for indefinite discount period. Discount will only be active if "Enable Discount" is checked and current time is within the date range. The percentage discount will be applied to all currency package prices.
               </p>
             </div>
 
-            <div className="mb-8">
-              <label className="block text-sm font-medium text-black mb-2">Description *</label>
-              <textarea
-                value={formData.description || ''}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                placeholder="Enter item description"
-                rows={3}
-              />
-            </div>
 
             <div className="mb-8">
               <ImageUpload
@@ -472,92 +488,140 @@ const AdminDashboard: React.FC = () => {
               />
             </div>
 
-            {/* Variations Section */}
+            {/* In-Game Currency Packages Section */}
             <div className="mb-8">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-playfair font-medium text-black">Size Variations</h3>
+                <div>
+                  <h3 className="text-lg font-playfair font-medium text-black">In-Game Currency Packages</h3>
+                  <p className="text-sm text-gray-500 mt-1">Add currency packages that will be shown when customers click on this item</p>
+                </div>
                 <button
                   onClick={addVariation}
                   className="flex items-center space-x-2 px-3 py-2 bg-cream-100 text-black rounded-lg hover:bg-cream-200 transition-colors duration-200"
                 >
                   <Plus className="h-4 w-4" />
-                  <span>Add Variation</span>
+                  <span>Add Currency Package</span>
                 </button>
               </div>
 
-              {formData.variations?.map((variation, index) => (
-                <div key={variation.id} className="flex items-center space-x-3 mb-3 p-4 bg-gray-50 rounded-lg">
-                  <input
-                    type="text"
-                    value={variation.name}
-                    onChange={(e) => updateVariation(index, 'name', e.target.value)}
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                    placeholder="Variation name (e.g., Small, Medium, Large)"
-                  />
-                  <input
-                    type="number"
-                    value={variation.price}
-                    onChange={(e) => updateVariation(index, 'price', Number(e.target.value))}
-                    className="w-24 px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                    placeholder="Price"
-                  />
-                  <button
-                    onClick={() => removeVariation(index)}
-                    className="p-2 text-red-500 hover:text-red-600 hover:bg-red-50 rounded transition-colors duration-200"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
+              {formData.variations && formData.variations.length > 0 ? (
+                formData.variations.map((variation, index) => (
+                  <div key={variation.id} className="mb-3 p-4 bg-gray-50 rounded-lg space-y-3">
+                    <div className="flex items-center space-x-3">
+                      <input
+                        type="text"
+                        value={variation.name || ''}
+                        onChange={(e) => updateVariation(index, 'name', e.target.value)}
+                        className="flex-1 px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                        placeholder="Currency package name (e.g., 5 Diamonds, 11 Diamonds, 301 Diamonds)"
+                      />
+                      <input
+                        type="number"
+                        value={variation.price || ''}
+                        onChange={(e) => {
+                          let value = e.target.value;
+                          // Remove leading zeros (but keep single 0 if that's all there is)
+                          if (value.length > 1 && value.startsWith('0') && value[1] !== '.') {
+                            value = value.replace(/^0+/, '') || '0';
+                          }
+                          const numValue = value === '' ? 0 : parseFloat(value) || 0;
+                          updateVariation(index, 'price', numValue);
+                        }}
+                        className="w-32 px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                        placeholder="Price (₱)"
+                        min="0"
+                        step="0.01"
+                      />
+                      <button
+                        onClick={() => removeVariation(index)}
+                        className="p-2 text-red-500 hover:text-red-600 hover:bg-red-50 rounded transition-colors duration-200"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                    <textarea
+                      value={variation.description || ''}
+                      onChange={(e) => updateVariation(index, 'description', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                      placeholder="Package description (optional)"
+                      rows={2}
+                    />
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-8 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
+                  <p className="text-gray-500">No currency packages added yet</p>
+                  <p className="text-sm text-gray-400 mt-1">Click "Add Currency Package" to add in-game currency options</p>
                 </div>
-              ))}
+              )}
             </div>
 
-            {/* Add-ons Section */}
+            {/* Custom Fields Section */}
             <div className="mb-8">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-playfair font-medium text-black">Add-ons</h3>
+                <div>
+                  <h3 className="text-lg font-playfair font-medium text-black">Customer Information Fields</h3>
+                  <p className="text-sm text-gray-500 mt-1">Define custom fields that will appear in the customer information section during checkout for this game</p>
+                </div>
                 <button
-                  onClick={addAddOn}
+                  onClick={addCustomField}
                   className="flex items-center space-x-2 px-3 py-2 bg-cream-100 text-black rounded-lg hover:bg-cream-200 transition-colors duration-200"
                 >
                   <Plus className="h-4 w-4" />
-                  <span>Add Add-on</span>
+                  <span>Add Field</span>
                 </button>
               </div>
 
-              {formData.addOns?.map((addOn, index) => (
-                <div key={addOn.id} className="flex items-center space-x-3 mb-3 p-4 bg-gray-50 rounded-lg">
-                  <input
-                    type="text"
-                    value={addOn.name}
-                    onChange={(e) => updateAddOn(index, 'name', e.target.value)}
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                    placeholder="Add-on name"
-                  />
-                  <select
-                    value={addOn.category}
-                    onChange={(e) => updateAddOn(index, 'category', e.target.value)}
-                    className="px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                  >
-                    {addOnCategories.map(cat => (
-                      <option key={cat.id} value={cat.id}>{cat.name}</option>
-                    ))}
-                  </select>
-                  <input
-                    type="number"
-                    value={addOn.price}
-                    onChange={(e) => updateAddOn(index, 'price', Number(e.target.value))}
-                    className="w-24 px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                    placeholder="Price"
-                  />
-                  <button
-                    onClick={() => removeAddOn(index)}
-                    className="p-2 text-red-500 hover:text-red-600 hover:bg-red-50 rounded transition-colors duration-200"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
+              {formData.customFields && formData.customFields.length > 0 ? (
+                formData.customFields.map((customField, index) => (
+                  <div key={index} className="mb-3 p-4 bg-gray-50 rounded-lg space-y-3">
+                    <div>
+                      <label className="block text-sm font-medium text-black mb-1">Field Label *</label>
+                      <input
+                        type="text"
+                        value={customField.label || ''}
+                        onChange={(e) => updateCustomField(index, 'label', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                        placeholder="e.g., ID with tag, UID, Server"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-black mb-1">Placeholder Text</label>
+                      <input
+                        type="text"
+                        value={customField.placeholder || ''}
+                        onChange={(e) => updateCustomField(index, 'placeholder', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                        placeholder="e.g., ID with tag (If Riot ID)"
+                      />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <label className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          checked={customField.required || false}
+                          onChange={(e) => updateCustomField(index, 'required', e.target.checked)}
+                          className="rounded border-gray-300 text-green-600 focus:ring-green-500"
+                        />
+                        <span className="text-sm font-medium text-black">Required Field</span>
+                      </label>
+                      <button
+                        onClick={() => removeCustomField(index)}
+                        className="p-2 text-red-500 hover:text-red-600 hover:bg-red-50 rounded transition-colors duration-200"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-8 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
+                  <p className="text-gray-500">No custom fields added yet</p>
+                  <p className="text-sm text-gray-400 mt-1">Click "Add Field" to create custom customer information fields</p>
                 </div>
-              ))}
+              )}
             </div>
+
           </div>
         </div>
       </div>
@@ -710,8 +774,7 @@ const AdminDashboard: React.FC = () => {
                     <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">Name</th>
                     <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">Category</th>
                     <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">Price</th>
-                    <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">Variations</th>
-                    <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">Add-ons</th>
+                    <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">Currency Packages</th>
                     <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">Status</th>
                     <th className="px-6 py-4 text-left text-sm font-medium text-gray-900">Actions</th>
                   </tr>
@@ -730,7 +793,6 @@ const AdminDashboard: React.FC = () => {
                       <td className="px-6 py-4">
                         <div>
                           <div className="font-medium text-gray-900">{item.name}</div>
-                          <div className="text-sm text-gray-500 truncate max-w-xs">{item.description}</div>
                         </div>
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-500">
@@ -749,10 +811,7 @@ const AdminDashboard: React.FC = () => {
                         </div>
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-500">
-                        {item.variations?.length || 0} variations
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-500">
-                        {item.addOns?.length || 0} add-ons
+                        {item.variations?.length || 0} package{item.variations?.length !== 1 ? 's' : ''}
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex flex-col space-y-1">
@@ -829,7 +888,6 @@ const AdminDashboard: React.FC = () => {
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex-1 min-w-0">
                       <h3 className="font-medium text-gray-900 truncate">{item.name}</h3>
-                      <p className="text-sm text-gray-500 mt-1 line-clamp-2">{item.description}</p>
                     </div>
                   </div>
                   
@@ -854,12 +912,8 @@ const AdminDashboard: React.FC = () => {
                       </span>
                     </div>
                     <div>
-                      <span className="text-gray-500">Variations:</span>
+                      <span className="text-gray-500">Currency Packages:</span>
                       <span className="ml-1 text-gray-900">{item.variations?.length || 0}</span>
-                    </div>
-                    <div>
-                      <span className="text-gray-500">Add-ons:</span>
-                      <span className="ml-1 text-gray-900">{item.addOns?.length || 0}</span>
                     </div>
                   </div>
                   
@@ -933,8 +987,7 @@ const AdminDashboard: React.FC = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center space-x-4">
-              <Coffee className="h-8 w-8 text-black" />
-              <h1 className="text-2xl font-noto font-semibold text-black">Just Cafè Admin</h1>
+              <h1 className="text-2xl font-noto font-semibold text-black">Admin</h1>
             </div>
             <div className="flex items-center space-x-4">
               <a
@@ -984,7 +1037,7 @@ const AdminDashboard: React.FC = () => {
           <div className="bg-white rounded-xl shadow-sm p-6">
             <div className="flex items-center">
               <div className="p-2 bg-cream-500 rounded-lg">
-                <Coffee className="h-6 w-6 text-white" />
+                <Package className="h-6 w-6 text-white" />
               </div>
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-600">Popular Items</p>

@@ -5,20 +5,25 @@ export default {
     extend: {
       colors: {
         cafe: {
-          accent: '#9A6624',
-          dark: '#0B0A0A',
-          cream: '#FAF9F6',
-          beige: '#F5F3F0',
-          latte: '#E8E3DC',
-          espresso: '#3D2F1F',
-          light: '#FEFCFB'
+          accent: '#60A5FA', // Light blue
+          dark: '#01121F', // Dark background
+          cream: '#E0F2FE',
+          beige: '#BAE6FD',
+          latte: '#7DD3FC',
+          espresso: '#0EA5E9',
+          light: '#F0F9FF',
+          // In-game credits theme colors
+          primary: '#60A5FA', // Light blue primary
+          secondary: '#38BDF8', // Sky blue
+          darkBg: '#01121F', // Main background (navy blue)
+          darkCard: '#0A1F2E', // Card background
+          glass: 'rgba(255, 255, 255, 0.1)', // Glass effect
+          text: '#E0F2FE', // Light text
+          textMuted: '#94A3B8' // Muted text
         }
       },
       fontFamily: {
-        'pretendard': ['Pretendard', 'system-ui', 'sans-serif'],
-        'noto-kr': ['Noto Serif KR', 'serif'],
-        'noto': ['Noto Serif', 'serif'],
-        'playfair': ['Playfair Display', 'serif']
+        'sans': ['Inter', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
       },
       animation: {
         'fade-in': 'fadeIn 0.5s ease-in-out',

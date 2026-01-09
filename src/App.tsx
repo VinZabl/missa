@@ -30,13 +30,15 @@ function MainApp() {
     : menuItems.filter(item => item.category === selectedCategory);
 
   return (
-    <div className="min-h-screen bg-cafe-light font-inter">
+    <div className="min-h-screen bg-cafe-darkBg">
       <Header 
         cartItemsCount={cart.getTotalItems()}
         onCartClick={() => handleViewChange('cart')}
         onMenuClick={() => handleViewChange('menu')}
       />
-      <SubNav selectedCategory={selectedCategory} onCategoryClick={handleCategoryClick} />
+      {currentView === 'menu' && (
+        <SubNav selectedCategory={selectedCategory} onCategoryClick={handleCategoryClick} />
+      )}
       
       {currentView === 'menu' && (
         <Menu 

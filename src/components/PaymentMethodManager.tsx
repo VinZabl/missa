@@ -76,6 +76,12 @@ const PaymentMethodManager: React.FC<PaymentMethodManagerProps> = ({ onBack }) =
       return;
     }
 
+    // Check for duplicate ID when adding (not editing)
+    if (currentView === 'add' && paymentMethods.some(m => m.id === formData.id)) {
+      alert(`A payment method with ID "${formData.id}" already exists. Please use a different ID.`);
+      return;
+    }
+
     try {
       if (editingMethod) {
         await updatePaymentMethod(editingMethod.id, formData);
@@ -85,7 +91,12 @@ const PaymentMethodManager: React.FC<PaymentMethodManagerProps> = ({ onBack }) =
       setCurrentView('list');
       setEditingMethod(null);
     } catch (error) {
-      alert(error instanceof Error ? error.message : 'Failed to save payment method');
+      const errorMessage = error instanceof Error ? error.message : 'Failed to save payment method';
+      if (errorMessage.includes('duplicate key') || errorMessage.includes('23505')) {
+        alert(`A payment method with ID "${formData.id}" already exists. Please use a different ID.`);
+      } else {
+        alert(errorMessage);
+      }
     }
   };
 

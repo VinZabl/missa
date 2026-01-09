@@ -2,6 +2,14 @@ export interface Variation {
   id: string;
   name: string;
   price: number;
+  description?: string;
+}
+
+export interface CustomField {
+  label: string;
+  key: string;
+  required: boolean;
+  placeholder?: string;
 }
 
 export interface AddOn {
@@ -16,21 +24,24 @@ export interface MenuItem {
   id: string;
   name: string;
   description: string;
-  basePrice: number;
+  basePrice: number; // Kept for database compatibility, but not used in UI
   category: string;
   image?: string;
   popular?: boolean;
   available?: boolean;
   variations?: Variation[];
-  addOns?: AddOn[];
-  // Discount pricing fields
-  discountPrice?: number;
+  // Discount pricing fields - percentage based
+  discountPercentage?: number; // Percentage discount (0-100)
   discountStartDate?: string;
   discountEndDate?: string;
   discountActive?: boolean;
+  // Legacy field for backward compatibility (will be removed)
+  discountPrice?: number;
   // Computed effective price (calculated in the app)
   effectivePrice?: number;
   isOnDiscount?: boolean;
+  // Custom fields for customer information
+  customFields?: CustomField[];
 }
 
 export interface CartItem extends MenuItem {

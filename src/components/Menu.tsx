@@ -88,16 +88,6 @@ const Menu: React.FC<MenuProps> = ({ menuItems, addToCart, cartItems, updateQuan
   return (
     <>
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-      {selectedCategory === 'all' && (
-        <div className="text-center mb-12">
-          <h2 className="text-4xl font-playfair font-semibold text-cafe-dark mb-4">Our Menu</h2>
-          <p className="text-gray-600 max-w-2xl mx-auto">
-            Discover our selection of carefully crafted beverages and delicious treats, 
-            all made with passion and quality ingredients.
-          </p>
-        </div>
-      )}
-
       {categories.map((category) => {
         const categoryItems = menuItems.filter(item => item.category === category.id);
         
@@ -106,10 +96,10 @@ const Menu: React.FC<MenuProps> = ({ menuItems, addToCart, cartItems, updateQuan
         return (
           <section key={category.id} id={category.id} className="mb-16">
             <div className="flex items-center mb-8">
-              <h3 className="text-3xl font-playfair font-medium text-cafe-dark">{category.name}</h3>
+              <h3 className="text-3xl font-medium text-cafe-text">{category.name}</h3>
             </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
               {categoryItems.map((item) => {
                 // Find cart items that match this menu item (by extracting menu item id from cart item id)
                 // For simple items without variations/add-ons, sum all matching cart items
