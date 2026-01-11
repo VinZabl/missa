@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
-import { ArrowLeft, Upload, X, Image as ImageIcon } from 'lucide-react';
-import { CartItem, PaymentMethod, CustomField } from '../types';
+import { ArrowLeft, Upload, X } from 'lucide-react';
+import { CartItem, PaymentMethod } from '../types';
 import { usePaymentMethods } from '../hooks/usePaymentMethods';
 import { useImageUpload } from '../hooks/useImageUpload';
 
@@ -21,36 +21,13 @@ const Checkout: React.FC<CheckoutProps> = ({ cartItems, totalPrice, onBack }) =>
   const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
   const [receiptError, setReceiptError] = useState<string | null>(null);
 
-  // Collect all unique custom fields from cart items
-  // If any game has custom fields, show those. Otherwise, show default "IGN" field
-  const customFields = useMemo(() => {
-    const fieldMap = new Map<string, CustomField>();
-    let hasAnyCustomFields = false;
-    
-    cartItems.forEach(item => {
-      if (item.customFields && item.customFields.length > 0) {
-        hasAnyCustomFields = true;
-        item.customFields.forEach(field => {
-          // Use key as unique identifier
-          if (!fieldMap.has(field.key)) {
-            fieldMap.set(field.key, field);
-          }
-        });
-      }
-    });
-    
-    // If no games have custom fields, return default "IGN" field
-    if (!hasAnyCustomFields) {
-      return [{
-        label: 'IGN',
-        key: 'ign',
-        required: true,
-        placeholder: 'In game name'
-      }];
-    }
-    
-    return Array.from(fieldMap.values());
+  // Group custom fields by item/game
+  // If any game has custom fields, show those grouped by game. Otherwise, show default "IGN" field
+  const itemsWithCustomFields = useMemo(() => {
+    return cartItems.filter(item => item.customFields && item.customFields.length > 0);
   }, [cartItems]);
+
+  const hasAnyCustomFields = itemsWithCustomFields.length > 0;
 
   React.useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -105,31 +82,35 @@ const Checkout: React.FC<CheckoutProps> = ({ cartItems, totalPrice, onBack }) =>
       return;
     }
 
-    // Build custom fields section
-    const customFieldsSection = customFields.length > 0 
-      ? customFields.map(field => {
-          const value = customFieldValues[field.key] || '';
+    // Build custom fields section grouped by game
+    let customFieldsSection = '';
+    if (hasAnyCustomFields) {
+      const fieldsByGame = itemsWithCustomFields.map(item => {
+        const fields = item.customFields?.map(field => {
+          const valueKey = `${item.id}_${field.key}`;
+          const value = customFieldValues[valueKey] || '';
           return value ? `${field.label}: ${value}` : null;
-        }).filter(Boolean).join('\n')
-      : '';
+        }).filter(Boolean).join('\n');
+        return fields ? `${item.name}\n${fields}` : null;
+      }).filter(Boolean).join('\n\n');
+      
+      if (fieldsByGame) {
+        customFieldsSection = fieldsByGame;
+      }
+    } else {
+      customFieldsSection = `🎮 IGN: ${customFieldValues['default_ign'] || ''}`;
+    }
 
     const orderDetails = `
 🛒 AmberKin ORDER
 
-${customFieldsSection || `🎮 IGN: ${customFieldValues['ign'] || ''}`}
+${customFieldsSection}
 
 📋 ORDER DETAILS:
 ${cartItems.map(item => {
   let itemDetails = `• ${item.name}`;
   if (item.selectedVariation) {
     itemDetails += ` (${item.selectedVariation.name})`;
-  }
-  if (item.selectedAddOns && item.selectedAddOns.length > 0) {
-    itemDetails += ` + ${item.selectedAddOns.map(addOn => 
-      addOn.quantity && addOn.quantity > 1 
-        ? `${addOn.name} x${addOn.quantity}`
-        : addOn.name
-    ).join(', ')}`;
   }
   itemDetails += ` x${item.quantity} - ₱${item.totalPrice * item.quantity}`;
   return itemDetails;
@@ -151,9 +132,22 @@ Please confirm this order to proceed. Thank you for choosing AmberKin! 🎮
     
   };
 
-  const isDetailsValid = customFields.every(field => 
-    !field.required || customFieldValues[field.key]?.trim()
-  );
+  const isDetailsValid = useMemo(() => {
+    if (!hasAnyCustomFields) {
+      // Default IGN field
+      return customFieldValues['default_ign']?.trim() || false;
+    }
+    
+    // Check all required fields for all items
+    return itemsWithCustomFields.every(item => {
+      if (!item.customFields) return true;
+      return item.customFields.every(field => {
+        if (!field.required) return true;
+        const valueKey = `${item.id}_${field.key}`;
+        return customFieldValues[valueKey]?.trim() || false;
+      });
+    });
+  }, [hasAnyCustomFields, itemsWithCustomFields, customFieldValues]);
 
   if (step === 'details') {
     return (
@@ -175,25 +169,64 @@ Please confirm this order to proceed. Thank you for choosing AmberKin! 🎮
             <h2 className="text-2xl font-medium text-cafe-text mb-6">Customer Information</h2>
             
             <form className="space-y-6">
-              {/* Dynamic Custom Fields */}
-              {customFields.map((field) => (
-                <div key={field.key}>
+              {/* Show count of items with custom fields */}
+              {hasAnyCustomFields && itemsWithCustomFields.length > 0 && (
+                <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <p className="text-sm text-blue-800">
+                    <span className="font-semibold">{itemsWithCustomFields.length}</span> game{itemsWithCustomFields.length > 1 ? 's' : ''} require{itemsWithCustomFields.length === 1 ? 's' : ''} additional information
+                  </p>
+                </div>
+              )}
+
+              {/* Dynamic Custom Fields grouped by game */}
+              {hasAnyCustomFields ? (
+                itemsWithCustomFields.map((item) => (
+                  <div key={item.id} className="space-y-4 pb-6 border-b border-cafe-primary/20 last:border-b-0 last:pb-0">
+                    <div className="mb-4">
+                      <h3 className="text-lg font-semibold text-cafe-text">{item.name}</h3>
+                      <p className="text-sm text-cafe-textMuted">Please provide the following information for this game</p>
+                    </div>
+                    {item.customFields?.map((field) => {
+                      const valueKey = `${item.id}_${field.key}`;
+                      return (
+                        <div key={valueKey}>
+                          <label className="block text-sm font-medium text-cafe-text mb-2">
+                            {field.label} {field.required && <span className="text-red-500">*</span>}
+                          </label>
+                          <input
+                            type="text"
+                            value={customFieldValues[valueKey] || ''}
+                            onChange={(e) => setCustomFieldValues({
+                              ...customFieldValues,
+                              [valueKey]: e.target.value
+                            })}
+                            className="w-full px-4 py-3 glass border border-cafe-primary/30 rounded-lg focus:ring-2 focus:ring-cafe-primary focus:border-cafe-primary transition-all duration-200 text-cafe-text placeholder-cafe-textMuted"
+                            placeholder={field.placeholder || field.label}
+                            required={field.required}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))
+              ) : (
+                <div>
                   <label className="block text-sm font-medium text-cafe-text mb-2">
-                    {field.label} {field.required && '*'}
+                    IGN <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
-                    value={customFieldValues[field.key] || ''}
+                    value={customFieldValues['default_ign'] || ''}
                     onChange={(e) => setCustomFieldValues({
                       ...customFieldValues,
-                      [field.key]: e.target.value
+                      ['default_ign']: e.target.value
                     })}
                     className="w-full px-4 py-3 glass border border-cafe-primary/30 rounded-lg focus:ring-2 focus:ring-cafe-primary focus:border-cafe-primary transition-all duration-200 text-cafe-text placeholder-cafe-textMuted"
-                    placeholder={field.placeholder || field.label}
-                    required={field.required}
+                    placeholder="In game name"
+                    required
                   />
                 </div>
-              ))}
+              )}
 
               <button
                 onClick={handleProceedToPayment}
@@ -327,14 +360,34 @@ Please confirm this order to proceed. Thank you for choosing AmberKin! 🎮
           <div className="space-y-4 mb-6">
             <div className="glass-strong rounded-lg p-4 border border-cafe-primary/30">
               <h4 className="font-medium text-cafe-text mb-2">Customer Details</h4>
-              {customFields.map(field => {
-                const value = customFieldValues[field.key];
-                return value ? (
-                  <p key={field.key} className="text-sm text-cafe-textMuted">
-                    {field.label}: {value}
+              {hasAnyCustomFields ? (
+                itemsWithCustomFields.map((item) => {
+                  const fields = item.customFields?.map(field => {
+                    const valueKey = `${item.id}_${field.key}`;
+                    const value = customFieldValues[valueKey];
+                    return value ? (
+                      <p key={valueKey} className="text-sm text-cafe-textMuted">
+                        {field.label}: {value}
+                      </p>
+                    ) : null;
+                  }).filter(Boolean);
+                  
+                  if (!fields || fields.length === 0) return null;
+                  
+                  return (
+                    <div key={item.id} className="mb-3 pb-3 border-b border-cafe-primary/20 last:border-b-0 last:pb-0">
+                      <p className="text-sm font-semibold text-cafe-text mb-1">{item.name}:</p>
+                      {fields}
+                    </div>
+                  );
+                })
+              ) : (
+                customFieldValues['default_ign'] && (
+                  <p className="text-sm text-cafe-textMuted">
+                    IGN: {customFieldValues['default_ign']}
                   </p>
-                ) : null;
-              })}
+                )
+              )}
             </div>
 
             {cartItems.map((item) => (

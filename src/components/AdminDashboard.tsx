@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit, Trash2, Save, X, ArrowLeft, TrendingUp, Package, Users, Lock, FolderOpen, CreditCard, Settings } from 'lucide-react';
+import { Plus, Edit, Trash2, Save, X, ArrowLeft, TrendingUp, Package, Users, Lock, FolderOpen, CreditCard, Settings, ArrowUpDown, ChevronDown, ChevronUp } from 'lucide-react';
 import { MenuItem, Variation, CustomField } from '../types';
 import { useMenu } from '../hooks/useMenu';
 import { useCategories } from '../hooks/useCategories';
@@ -45,6 +45,11 @@ const AdminDashboard: React.FC = () => {
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [showBulkActions, setShowBulkActions] = useState(false);
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({
+    customization: false,
+    packages: false,
+    customFields: false
+  });
   const [formData, setFormData] = useState<Partial<MenuItem>>({
     name: '',
     basePrice: 0,
@@ -54,6 +59,13 @@ const AdminDashboard: React.FC = () => {
     variations: [],
     customFields: []
   });
+
+  const toggleSection = (section: string) => {
+    setCollapsedSections(prev => ({
+      ...prev,
+      [section]: !prev[section]
+    }));
+  };
 
   const handleAddItem = () => {
     setCurrentView('add');
@@ -223,15 +235,17 @@ const AdminDashboard: React.FC = () => {
   }, [selectedItems]);
 
   const addVariation = () => {
+    const currentVariations = formData.variations || [];
     const newVariation: Variation = {
       id: `var-${Date.now()}`,
       name: '',
       price: 0,
-      description: ''
+      description: '',
+      sort_order: currentVariations.length
     };
     setFormData({
       ...formData,
-      variations: [...(formData.variations || []), newVariation]
+      variations: [...currentVariations, newVariation]
     });
   };
 
@@ -244,6 +258,20 @@ const AdminDashboard: React.FC = () => {
   const removeVariation = (index: number) => {
     const updatedVariations = formData.variations?.filter((_, i) => i !== index) || [];
     setFormData({ ...formData, variations: updatedVariations });
+  };
+
+  const sortVariationsByPrice = () => {
+    if (!formData.variations || formData.variations.length === 0) return;
+    
+    // Sort variations by price (lowest to highest) and update sort_order
+    const sortedVariations = [...formData.variations]
+      .sort((a, b) => a.price - b.price)
+      .map((variation, index) => ({
+        ...variation,
+        sort_order: index
+      }));
+    
+    setFormData({ ...formData, variations: sortedVariations });
   };
 
   // Custom Fields Management
@@ -421,186 +449,235 @@ const AdminDashboard: React.FC = () => {
 
         <div className="max-w-4xl mx-auto px-4 py-8">
           <div className="bg-white rounded-xl shadow-sm p-8">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-              <div>
-                <label className="block text-sm font-medium text-black mb-2">Item Name (Game Name) *</label>
-                <input
-                  type="text"
-                  value={formData.name || ''}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent"
-                  placeholder="Enter game name (e.g., Wild Rift, Mobile Legends)"
-                />
-              </div>
+            {/* Item Customization Section */}
+            <div className="mb-8 border-b border-gray-200 pb-8">
+              <button
+                onClick={() => toggleSection('customization')}
+                className="w-full flex items-center justify-between text-left mb-4 hover:opacity-80 transition-opacity"
+              >
+                <h3 className="text-xl font-playfair font-semibold text-black">Item Customization</h3>
+                {collapsedSections.customization ? (
+                  <ChevronDown className="h-5 w-5 text-gray-600" />
+                ) : (
+                  <ChevronUp className="h-5 w-5 text-gray-600" />
+                )}
+              </button>
+              
+              {!collapsedSections.customization && (
+                <div className="space-y-8">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <label className="block text-sm font-medium text-black mb-2">Item Name (Game Name) *</label>
+                      <input
+                        type="text"
+                        value={formData.name || ''}
+                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent"
+                        placeholder="Enter game name (e.g., Wild Rift, Mobile Legends)"
+                      />
+                    </div>
 
-              <div>
-                <label className="block text-sm font-medium text-black mb-2">Category *</label>
-                <select
-                  value={formData.category || ''}
-                  onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent"
-                >
-                  {categories.map(cat => (
-                    <option key={cat.id} value={cat.id}>{cat.name}</option>
-                  ))}
-                </select>
-              </div>
+                    <div>
+                      <label className="block text-sm font-medium text-black mb-2">Category *</label>
+                      <select
+                        value={formData.category || ''}
+                        onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent"
+                      >
+                        {categories.map(cat => (
+                          <option key={cat.id} value={cat.id}>{cat.name}</option>
+                        ))}
+                      </select>
+                    </div>
 
-              <div className="flex items-center">
-                <label className="flex items-center space-x-2">
-                  <input
-                    type="checkbox"
-                    checked={formData.popular || false}
-                    onChange={(e) => setFormData({ ...formData, popular: e.target.checked })}
-                    className="rounded border-gray-300 text-green-600 focus:ring-green-500"
-                  />
-                  <span className="text-sm font-medium text-black">Mark as Popular</span>
-                </label>
-              </div>
+                    <div className="flex items-center">
+                      <label className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          checked={formData.popular || false}
+                          onChange={(e) => setFormData({ ...formData, popular: e.target.checked })}
+                          className="rounded border-gray-300 text-green-600 focus:ring-green-500"
+                        />
+                        <span className="text-sm font-medium text-black">Mark as Popular</span>
+                      </label>
+                    </div>
 
-              <div className="flex items-center">
-                <label className="flex items-center space-x-2">
-                  <input
-                    type="checkbox"
-                    checked={formData.available ?? true}
-                    onChange={(e) => setFormData({ ...formData, available: e.target.checked })}
-                    className="rounded border-gray-300 text-green-600 focus:ring-green-500"
-                  />
-                  <span className="text-sm font-medium text-black">Available for Order</span>
-                </label>
-              </div>
-            </div>
+                    <div className="flex items-center">
+                      <label className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          checked={formData.available ?? true}
+                          onChange={(e) => setFormData({ ...formData, available: e.target.checked })}
+                          className="rounded border-gray-300 text-green-600 focus:ring-green-500"
+                        />
+                        <span className="text-sm font-medium text-black">Available for Order</span>
+                      </label>
+                    </div>
+                  </div>
 
-            {/* Discount Pricing Section */}
-            <div className="mb-8">
-              <h3 className="text-lg font-playfair font-medium text-black mb-4">Discount (Percentage)</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-sm font-medium text-black mb-2">Discount Percentage (%)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="0.01"
-                    value={formData.discountPercentage || ''}
-                    onChange={(e) => setFormData({ ...formData, discountPercentage: Number(e.target.value) || undefined })}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent"
-                    placeholder="Enter discount percentage (e.g., 10 for 10%)"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">
-                    This percentage will be applied to all currency packages for this item.
-                  </p>
-                </div>
+                  {/* Discount Pricing Section */}
+                  <div>
+                    <h4 className="text-lg font-playfair font-medium text-black mb-4">Discount (Percentage)</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div>
+                        <label className="block text-sm font-medium text-black mb-2">Discount Percentage (%)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="0.01"
+                          value={formData.discountPercentage || ''}
+                          onChange={(e) => setFormData({ ...formData, discountPercentage: Number(e.target.value) || undefined })}
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent"
+                          placeholder="Enter discount percentage (e.g., 10 for 10%)"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">
+                          This percentage will be applied to all currency packages for this item.
+                        </p>
+                      </div>
 
-                <div className="flex items-center">
-                  <label className="flex items-center space-x-2">
-                    <input
-                      type="checkbox"
-                      checked={formData.discountActive || false}
-                      onChange={(e) => setFormData({ ...formData, discountActive: e.target.checked })}
-                      className="rounded border-gray-300 text-green-600 focus:ring-green-500"
+                      <div className="flex items-center">
+                        <label className="flex items-center space-x-2">
+                          <input
+                            type="checkbox"
+                            checked={formData.discountActive || false}
+                            onChange={(e) => setFormData({ ...formData, discountActive: e.target.checked })}
+                            className="rounded border-gray-300 text-green-600 focus:ring-green-500"
+                          />
+                          <span className="text-sm font-medium text-black">Enable Discount</span>
+                        </label>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-black mb-2">Discount Start Date</label>
+                        <input
+                          type="datetime-local"
+                          value={formData.discountStartDate || ''}
+                          onChange={(e) => setFormData({ ...formData, discountStartDate: e.target.value || undefined })}
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-black mb-2">Discount End Date</label>
+                        <input
+                          type="datetime-local"
+                          value={formData.discountEndDate || ''}
+                          onChange={(e) => setFormData({ ...formData, discountEndDate: e.target.value || undefined })}
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent"
+                        />
+                      </div>
+                    </div>
+                    <p className="text-sm text-gray-500 mt-2">
+                      Leave dates empty for indefinite discount period. Discount will only be active if "Enable Discount" is checked and current time is within the date range. The percentage discount will be applied to all currency package prices.
+                    </p>
+                  </div>
+
+                  {/* Image Upload */}
+                  <div>
+                    <ImageUpload
+                      currentImage={formData.image}
+                      onImageChange={(imageUrl) => setFormData({ ...formData, image: imageUrl })}
                     />
-                    <span className="text-sm font-medium text-black">Enable Discount</span>
-                  </label>
+                  </div>
                 </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-black mb-2">Discount Start Date</label>
-                  <input
-                    type="datetime-local"
-                    value={formData.discountStartDate || ''}
-                    onChange={(e) => setFormData({ ...formData, discountStartDate: e.target.value || undefined })}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-black mb-2">Discount End Date</label>
-                  <input
-                    type="datetime-local"
-                    value={formData.discountEndDate || ''}
-                    onChange={(e) => setFormData({ ...formData, discountEndDate: e.target.value || undefined })}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent"
-                  />
-                </div>
-              </div>
-              <p className="text-sm text-gray-500 mt-2">
-                Leave dates empty for indefinite discount period. Discount will only be active if "Enable Discount" is checked and current time is within the date range. The percentage discount will be applied to all currency package prices.
-              </p>
-            </div>
-
-
-            <div className="mb-8">
-              <ImageUpload
-                currentImage={formData.image}
-                onImageChange={(imageUrl) => setFormData({ ...formData, image: imageUrl })}
-              />
+              )}
             </div>
 
             {/* In-Game Currency Packages Section */}
-            <div className="mb-8">
+            <div className="mb-8 border-b border-gray-200 pb-8">
               <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h3 className="text-lg font-playfair font-medium text-black">In-Game Currency Packages</h3>
-                  <p className="text-sm text-gray-500 mt-1">Add currency packages that will be shown when customers click on this item</p>
-                </div>
                 <button
-                  onClick={addVariation}
-                  className="flex items-center space-x-2 px-3 py-2 bg-cream-100 text-black rounded-lg hover:bg-cream-200 transition-colors duration-200"
+                  onClick={() => toggleSection('packages')}
+                  className="flex-1 flex items-center justify-between text-left hover:opacity-80 transition-opacity"
                 >
-                  <Plus className="h-4 w-4" />
-                  <span>Add Currency Package</span>
+                  <div className="flex-1">
+                    <h3 className="text-xl font-playfair font-semibold text-black">In-Game Currency Packages</h3>
+                    <p className="text-sm text-gray-500 mt-1">Add currency packages that will be shown when customers click on this item</p>
+                  </div>
+                  {collapsedSections.packages ? (
+                    <ChevronDown className="h-5 w-5 text-gray-600 ml-4 flex-shrink-0" />
+                  ) : (
+                    <ChevronUp className="h-5 w-5 text-gray-600 ml-4 flex-shrink-0" />
+                  )}
                 </button>
               </div>
 
-              {formData.variations && formData.variations.length > 0 ? (
-                formData.variations.map((variation, index) => (
-                  <div key={variation.id} className="mb-3 p-4 bg-gray-50 rounded-lg space-y-3">
-                    <div className="flex items-center space-x-3">
-                      <input
-                        type="text"
-                        value={variation.name || ''}
-                        onChange={(e) => updateVariation(index, 'name', e.target.value)}
-                        className="flex-1 px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                        placeholder="Currency package name (e.g., 5 Diamonds, 11 Diamonds, 301 Diamonds)"
-                      />
-                      <input
-                        type="number"
-                        value={variation.price || ''}
-                        onChange={(e) => {
-                          let value = e.target.value;
-                          // Remove leading zeros (but keep single 0 if that's all there is)
-                          if (value.length > 1 && value.startsWith('0') && value[1] !== '.') {
-                            value = value.replace(/^0+/, '') || '0';
-                          }
-                          const numValue = value === '' ? 0 : parseFloat(value) || 0;
-                          updateVariation(index, 'price', numValue);
-                        }}
-                        className="w-32 px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                        placeholder="Price (₱)"
-                        min="0"
-                        step="0.01"
-                      />
+              {!collapsedSections.packages && (
+                <div className="space-y-4">
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:space-x-2 sm:gap-0">
+                    {formData.variations && formData.variations.length > 1 && (
                       <button
-                        onClick={() => removeVariation(index)}
-                        className="p-2 text-red-500 hover:text-red-600 hover:bg-red-50 rounded transition-colors duration-200"
+                        onClick={sortVariationsByPrice}
+                        className="flex items-center justify-center space-x-2 px-3 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors duration-200 text-sm sm:text-base"
+                        title="Sort packages by price (lowest to highest)"
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <ArrowUpDown className="h-4 w-4" />
+                        <span className="whitespace-nowrap">Sort by Price</span>
                       </button>
-                    </div>
-                    <textarea
-                      value={variation.description || ''}
-                      onChange={(e) => updateVariation(index, 'description', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                      placeholder="Package description (optional)"
-                      rows={2}
-                    />
+                    )}
+                    <button
+                      onClick={addVariation}
+                      className="flex items-center justify-center space-x-2 px-3 py-2 bg-cream-100 text-black rounded-lg hover:bg-cream-200 transition-colors duration-200 text-sm sm:text-base"
+                    >
+                      <Plus className="h-4 w-4" />
+                      <span className="whitespace-nowrap">Add Package</span>
+                    </button>
                   </div>
-                ))
-              ) : (
-                <div className="text-center py-8 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
-                  <p className="text-gray-500">No currency packages added yet</p>
-                  <p className="text-sm text-gray-400 mt-1">Click "Add Currency Package" to add in-game currency options</p>
+
+                  {formData.variations && formData.variations.length > 0 ? (
+                    formData.variations.map((variation, index) => (
+                      <div key={variation.id} className="mb-3 p-4 bg-gray-50 rounded-lg space-y-3">
+                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                          <input
+                            type="text"
+                            value={variation.name || ''}
+                            onChange={(e) => updateVariation(index, 'name', e.target.value)}
+                            className="flex-1 px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm sm:text-base"
+                            placeholder="Package name (e.g., 5 Diamonds)"
+                          />
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="number"
+                              value={variation.price || ''}
+                              onChange={(e) => {
+                                let value = e.target.value;
+                                // Remove leading zeros (but keep single 0 if that's all there is)
+                                if (value.length > 1 && value.startsWith('0') && value[1] !== '.') {
+                                  value = value.replace(/^0+/, '') || '0';
+                                }
+                                const numValue = value === '' ? 0 : parseFloat(value) || 0;
+                                updateVariation(index, 'price', numValue);
+                              }}
+                              className="flex-1 sm:w-32 px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm sm:text-base"
+                              placeholder="Price (₱)"
+                              min="0"
+                              step="0.01"
+                            />
+                            <button
+                              onClick={() => removeVariation(index)}
+                              className="p-2 text-red-500 hover:text-red-600 hover:bg-red-50 rounded transition-colors duration-200 flex-shrink-0"
+                              aria-label="Remove package"
+                            >
+                              <Trash2 className="h-4 w-4 sm:h-5 sm:w-5" />
+                            </button>
+                          </div>
+                        </div>
+                        <textarea
+                          value={variation.description || ''}
+                          onChange={(e) => updateVariation(index, 'description', e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm sm:text-base resize-y"
+                          placeholder="Package description (optional)"
+                          rows={2}
+                        />
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-center py-8 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
+                      <p className="text-gray-500">No currency packages added yet</p>
+                      <p className="text-sm text-gray-400 mt-1">Click "Add Package" to add in-game currency options</p>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -608,65 +685,82 @@ const AdminDashboard: React.FC = () => {
             {/* Custom Fields Section */}
             <div className="mb-8">
               <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h3 className="text-lg font-playfair font-medium text-black">Customer Information Fields</h3>
-                  <p className="text-sm text-gray-500 mt-1">Define custom fields that will appear in the customer information section during checkout for this game</p>
-                </div>
                 <button
-                  onClick={addCustomField}
-                  className="flex items-center space-x-2 px-3 py-2 bg-cream-100 text-black rounded-lg hover:bg-cream-200 transition-colors duration-200"
+                  onClick={() => toggleSection('customFields')}
+                  className="flex-1 flex items-center justify-between text-left hover:opacity-80 transition-opacity"
                 >
-                  <Plus className="h-4 w-4" />
-                  <span>Add Field</span>
+                  <div className="flex-1">
+                    <h3 className="text-xl font-playfair font-semibold text-black">Customer Information Fields</h3>
+                    <p className="text-sm text-gray-500 mt-1">Define custom fields that will appear in the customer information section during checkout for this game</p>
+                  </div>
+                  {collapsedSections.customFields ? (
+                    <ChevronDown className="h-5 w-5 text-gray-600 ml-4 flex-shrink-0" />
+                  ) : (
+                    <ChevronUp className="h-5 w-5 text-gray-600 ml-4 flex-shrink-0" />
+                  )}
                 </button>
               </div>
 
-              {formData.customFields && formData.customFields.length > 0 ? (
-                formData.customFields.map((customField, index) => (
-                  <div key={index} className="mb-3 p-4 bg-gray-50 rounded-lg space-y-3">
-                    <div>
-                      <label className="block text-sm font-medium text-black mb-1">Field Label *</label>
-                      <input
-                        type="text"
-                        value={customField.label || ''}
-                        onChange={(e) => updateCustomField(index, 'label', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                        placeholder="e.g., ID with tag, UID, Server"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-black mb-1">Placeholder Text</label>
-                      <input
-                        type="text"
-                        value={customField.placeholder || ''}
-                        onChange={(e) => updateCustomField(index, 'placeholder', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                        placeholder="e.g., ID with tag (If Riot ID)"
-                      />
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <label className="flex items-center space-x-2">
-                        <input
-                          type="checkbox"
-                          checked={customField.required || false}
-                          onChange={(e) => updateCustomField(index, 'required', e.target.checked)}
-                          className="rounded border-gray-300 text-green-600 focus:ring-green-500"
-                        />
-                        <span className="text-sm font-medium text-black">Required Field</span>
-                      </label>
-                      <button
-                        onClick={() => removeCustomField(index)}
-                        className="p-2 text-red-500 hover:text-red-600 hover:bg-red-50 rounded transition-colors duration-200"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
+              {!collapsedSections.customFields && (
+                <div className="space-y-4">
+                  <div className="flex justify-end">
+                    <button
+                      onClick={addCustomField}
+                      className="flex items-center space-x-2 px-3 py-2 bg-cream-100 text-black rounded-lg hover:bg-cream-200 transition-colors duration-200"
+                    >
+                      <Plus className="h-4 w-4" />
+                      <span>Add Field</span>
+                    </button>
                   </div>
-                ))
-              ) : (
-                <div className="text-center py-8 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
-                  <p className="text-gray-500">No custom fields added yet</p>
-                  <p className="text-sm text-gray-400 mt-1">Click "Add Field" to create custom customer information fields</p>
+
+                  {formData.customFields && formData.customFields.length > 0 ? (
+                    formData.customFields.map((customField, index) => (
+                      <div key={index} className="mb-3 p-4 bg-gray-50 rounded-lg space-y-3">
+                        <div>
+                          <label className="block text-sm font-medium text-black mb-1">Field Label *</label>
+                          <input
+                            type="text"
+                            value={customField.label || ''}
+                            onChange={(e) => updateCustomField(index, 'label', e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                            placeholder="e.g., ID with tag, UID, Server"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-black mb-1">Placeholder Text</label>
+                          <input
+                            type="text"
+                            value={customField.placeholder || ''}
+                            onChange={(e) => updateCustomField(index, 'placeholder', e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                            placeholder="e.g., ID with tag (If Riot ID)"
+                          />
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <label className="flex items-center space-x-2">
+                            <input
+                              type="checkbox"
+                              checked={customField.required || false}
+                              onChange={(e) => updateCustomField(index, 'required', e.target.checked)}
+                              className="rounded border-gray-300 text-green-600 focus:ring-green-500"
+                            />
+                            <span className="text-sm font-medium text-black">Required Field</span>
+                          </label>
+                          <button
+                            onClick={() => removeCustomField(index)}
+                            className="p-2 text-red-500 hover:text-red-600 hover:bg-red-50 rounded transition-colors duration-200"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-center py-8 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
+                      <p className="text-gray-500">No custom fields added yet</p>
+                      <p className="text-sm text-gray-400 mt-1">Click "Add Field" to create custom customer information fields</p>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

@@ -3,6 +3,7 @@ export interface Variation {
   name: string;
   price: number;
   description?: string;
+  sort_order?: number;
 }
 
 export interface CustomField {

@@ -101,6 +101,7 @@ export type Database = {
           name: string;
           price: number;
           description: string | null;
+          sort_order: number | null;
           created_at: string;
         };
         Insert: {
@@ -109,6 +110,7 @@ export type Database = {
           name: string;
           price: number;
           description?: string | null;
+          sort_order?: number | null;
           created_at?: string;
         };
         Update: {
@@ -117,6 +119,7 @@ export type Database = {
           name?: string;
           price?: number;
           description?: string | null;
+          sort_order?: number | null;
           created_at?: string;
         };
       };

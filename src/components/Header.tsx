@@ -18,12 +18,11 @@ const Header: React.FC<HeaderProps> = ({ cartItemsCount, onCartClick, onMenuClic
       backdropFilter: 'blur(20px)',
       WebkitBackdropFilter: 'blur(20px)'
     }}>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
         <div className="flex items-center justify-between min-h-16 md:min-h-20">
           <button 
             onClick={onMenuClick}
             className="text-cafe-text hover:text-cafe-primary transition-colors duration-200 flex items-center"
-            style={{ marginLeft: '-0.5rem' }}
           >
             <img 
               src="/image.png" 

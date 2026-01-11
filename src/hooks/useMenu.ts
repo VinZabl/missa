@@ -53,12 +53,13 @@ export const useMenu = () => {
           discountPrice: item.discount_price || undefined,
           effectivePrice: item.base_price, // Not used anymore, but kept for compatibility
           isOnDiscount: isDiscountActive && discountPercentage !== undefined,
-          variations: item.variations?.map(v => ({
+          variations: (item.variations?.map(v => ({
             id: v.id,
             name: v.name,
             price: v.price,
-            description: v.description || undefined
-          })) || [],
+            description: v.description || undefined,
+            sort_order: v.sort_order || 0
+          })) || []).sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)),
           customFields: (item.custom_fields as CustomField[]) || []
         };
       }) || [];
@@ -103,11 +104,12 @@ export const useMenu = () => {
         const { error: variationsError } = await supabase
           .from('variations')
           .insert(
-            item.variations.map(v => ({
+            item.variations.map((v, index) => ({
               menu_item_id: menuItem.id,
               name: v.name,
               price: v.price,
-              description: v.description || null
+              description: v.description || null,
+              sort_order: v.sort_order !== undefined ? v.sort_order : index
             }))
           );
 
@@ -155,11 +157,12 @@ export const useMenu = () => {
         const { error: variationsError } = await supabase
           .from('variations')
           .insert(
-            updates.variations.map(v => ({
+            updates.variations.map((v, index) => ({
               menu_item_id: id,
               name: v.name,
               price: v.price,
-              description: v.description || null
+              description: v.description || null,
+              sort_order: v.sort_order !== undefined ? v.sort_order : index
             }))
           );
 
