@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef } from 'react';
-import { ArrowLeft, Upload, X, Copy, Check, MousePointerClick, ChevronUp } from 'lucide-react';
+import { ArrowLeft, Upload, X, Copy, Check, MousePointerClick, ChevronUp, Download } from 'lucide-react';
 import { CartItem, PaymentMethod, CustomField } from '../types';
 import { usePaymentMethods } from '../hooks/usePaymentMethods';
 import { useImageUpload } from '../hooks/useImageUpload';
@@ -321,6 +321,23 @@ Please confirm this order to proceed. Thank you for choosing AmberKin! 🎮
     }
   };
 
+  const handleDownloadQRCode = async (qrCodeUrl: string, paymentMethodName: string) => {
+    try {
+      const response = await fetch(qrCodeUrl);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `qr-code-${paymentMethodName.toLowerCase().replace(/\s+/g, '-')}.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Failed to download QR code:', error);
+    }
+  };
+
   const handlePlaceOrder = () => {
     if (!paymentMethod) {
       setReceiptError('Please select a payment method');
@@ -612,10 +629,18 @@ Please confirm this order to proceed. Thank you for choosing AmberKin! 🎮
                   </div>
                   <p className="text-sm text-cafe-textMuted mb-3">Account Name: {selectedPaymentMethod.account_name}</p>
                   <p className="text-xl font-semibold text-white mb-3">Amount: ₱{totalPrice}</p>
-                  <p className="text-sm text-cafe-textMuted">Press the copy button to copy the number, make a payment, then upload the receipt below 👇</p>
+                  <p className="text-sm text-cafe-textMuted">Press the copy button to copy the number or download the QR code, make a payment, then upload the receipt below 👇</p>
                 </div>
                 <div className="flex-shrink-0 w-full md:w-auto flex flex-col items-center md:items-start">
                   <h3 className="font-medium text-cafe-text mb-4 text-center md:text-left w-full md:w-auto">Other Option</h3>
+                  <button
+                    onClick={() => handleDownloadQRCode(selectedPaymentMethod.qr_code_url, selectedPaymentMethod.name)}
+                    className="px-3 py-1.5 mb-2 glass-strong rounded-lg hover:bg-cafe-primary/20 transition-colors duration-200 text-sm font-medium text-cafe-text flex items-center gap-2 mx-auto md:mx-0"
+                    title="Download QR code"
+                  >
+                    <Download className="h-4 w-4" />
+                    <span>Download QR</span>
+                  </button>
                   <img 
                     src={selectedPaymentMethod.qr_code_url} 
                     alt={`${selectedPaymentMethod.name} QR Code`}
