@@ -657,11 +657,54 @@ Please confirm this order to proceed. Thank you for choosing AmberKin! 🎮
               className="glass-strong rounded-lg p-6 mb-6 border border-cafe-primary/30"
             >
               <h3 className="font-medium text-cafe-text mb-4">Payment Details</h3>
-              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-                <div className="flex-1">
-                  <p className="text-sm text-cafe-textMuted mb-1">{selectedPaymentMethod.name}</p>
-                  <div className="flex items-center gap-2 mb-1">
-                    <p className="font-mono text-cafe-text font-medium text-xl md:text-2xl">{selectedPaymentMethod.account_number}</p>
+              <div className="space-y-4">
+                {/* Payment Method Name */}
+                <div>
+                  <p className="text-lg font-semibold text-cafe-text">{selectedPaymentMethod.name}</p>
+                </div>
+                
+                {/* Account Name */}
+                <div>
+                  <p className="text-sm text-cafe-textMuted mb-1">Account Name:</p>
+                  <p className="text-cafe-text font-medium">{selectedPaymentMethod.account_name}</p>
+                </div>
+                
+                {/* Other Option */}
+                <div>
+                  <h3 className="font-medium text-cafe-text text-center">Other Option</h3>
+                </div>
+                
+                {/* Download QR Button and QR Image */}
+                <div className="flex flex-col items-center gap-3">
+                  {!isMessengerBrowser && (
+                    <button
+                      onClick={() => handleDownloadQRCode(selectedPaymentMethod.qr_code_url, selectedPaymentMethod.name)}
+                      className="px-3 py-1.5 glass-strong rounded-lg hover:bg-cafe-primary/20 transition-colors duration-200 text-sm font-medium text-cafe-text flex items-center gap-2"
+                      title="Download QR code"
+                    >
+                      <Download className="h-4 w-4" />
+                      <span>Download QR</span>
+                    </button>
+                  )}
+                  {isMessengerBrowser && (
+                    <p className="text-xs text-cafe-textMuted text-center">Long-press the QR code to save</p>
+                  )}
+                  <img 
+                    src={selectedPaymentMethod.qr_code_url} 
+                    alt={`${selectedPaymentMethod.name} QR Code`}
+                    className="w-32 h-32 rounded-lg border-2 border-cafe-primary/30 shadow-sm"
+                    onError={(e) => {
+                      e.currentTarget.src = 'https://images.pexels.com/photos/8867482/pexels-photo-8867482.jpeg?auto=compress&cs=tinysrgb&w=300&h=300&fit=crop';
+                    }}
+                  />
+                </div>
+                
+                {/* Account Number with Copy Button */}
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="font-mono text-cafe-text font-medium text-xl md:text-2xl">
+                      {selectedPaymentMethod.name}# {selectedPaymentMethod.account_number}
+                    </p>
                     <button
                       onClick={() => handleCopyAccountNumber(selectedPaymentMethod.account_number)}
                       className="px-3 py-1.5 glass-strong rounded-lg hover:bg-cafe-primary/20 transition-colors duration-200 flex-shrink-0 text-sm font-medium"
@@ -674,34 +717,12 @@ Please confirm this order to proceed. Thank you for choosing AmberKin! 🎮
                       )}
                     </button>
                   </div>
-                  <p className="text-sm text-cafe-textMuted mb-3">Account Name: {selectedPaymentMethod.account_name}</p>
-                  <p className="text-xl font-semibold text-white mb-3">Amount: ₱{totalPrice}</p>
-                  <p className="text-sm text-cafe-textMuted">Press the copy button to copy the number or download the QR code, make a payment, then upload the receipt below 👇</p>
                 </div>
-                <div className="flex-shrink-0 w-full md:w-auto flex flex-col items-center md:items-start">
-                  <h3 className="font-medium text-cafe-text mb-4 text-center md:text-left w-full md:w-auto">Other Option</h3>
-                  {!isMessengerBrowser && (
-                    <button
-                      onClick={() => handleDownloadQRCode(selectedPaymentMethod.qr_code_url, selectedPaymentMethod.name)}
-                      className="px-3 py-1.5 mb-2 glass-strong rounded-lg hover:bg-cafe-primary/20 transition-colors duration-200 text-sm font-medium text-cafe-text flex items-center gap-2 mx-auto md:mx-0"
-                      title="Download QR code"
-                    >
-                      <Download className="h-4 w-4" />
-                      <span>Download QR</span>
-                    </button>
-                  )}
-                  {isMessengerBrowser && (
-                    <p className="text-xs text-cafe-textMuted mb-2 text-center md:text-left">Long-press the QR code to save</p>
-                  )}
-                  <img 
-                    src={selectedPaymentMethod.qr_code_url} 
-                    alt={`${selectedPaymentMethod.name} QR Code`}
-                    className="w-32 h-32 rounded-lg border-2 border-cafe-primary/30 shadow-sm mx-auto md:mx-0"
-                    onError={(e) => {
-                      e.currentTarget.src = 'https://images.pexels.com/photos/8867482/pexels-photo-8867482.jpeg?auto=compress&cs=tinysrgb&w=300&h=300&fit=crop';
-                    }}
-                  />
-                  <p className="text-xs text-cafe-textMuted text-center mt-2">Scan to pay</p>
+                
+                {/* Amount and Instructions */}
+                <div className="pt-2 border-t border-cafe-primary/20">
+                  <p className="text-xl font-semibold text-white mb-2">Amount: ₱{totalPrice}</p>
+                  <p className="text-sm text-cafe-textMuted">Press the copy button to copy the number or download the QR code, make a payment, then upload the receipt below 👇</p>
                 </div>
               </div>
             </div>
