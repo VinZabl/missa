@@ -322,52 +322,82 @@ Please confirm this order to proceed. Thank you for choosing AmberKin! 🎮
   };
 
   const handleDownloadQRCode = (qrCodeUrl: string, paymentMethodName: string) => {
-    // Use img element approach for better Messenger browser compatibility
-    const img = new Image();
-    img.crossOrigin = 'anonymous'; // Enable CORS
+    // Detect if we're in Messenger's in-app browser
+    const isMessengerBrowser = /FBAN|FBAV/i.test(navigator.userAgent) || 
+                               /FB_IAB/i.test(navigator.userAgent) ||
+                               window.navigator.standalone === false;
     
-    img.onload = () => {
-      try {
-        // Create canvas and draw image
-        const canvas = document.createElement('canvas');
-        canvas.width = img.width;
-        canvas.height = img.height;
-        const ctx = canvas.getContext('2d');
-        
-        if (!ctx) {
-          throw new Error('Could not get canvas context');
-        }
-        
-        ctx.drawImage(img, 0, 0);
-        
-        // Convert canvas to blob
-        canvas.toBlob((blob) => {
-          if (!blob) {
-            // Fallback to direct link if blob creation fails
+    if (isMessengerBrowser) {
+      // For Messenger's browser, open image in a way that allows saving
+      // Users can long-press (mobile) or right-click (desktop) to save
+      const newWindow = window.open(qrCodeUrl, '_blank');
+      if (newWindow) {
+        newWindow.focus();
+        // Show a brief message (optional - you could add a toast notification here)
+        return;
+      }
+    }
+    
+    // For regular browsers, try download
+    try {
+      // Use img element approach for better compatibility
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      
+      img.onload = () => {
+        try {
+          // Create canvas and draw image
+          const canvas = document.createElement('canvas');
+          canvas.width = img.width;
+          canvas.height = img.height;
+          const ctx = canvas.getContext('2d');
+          
+          if (!ctx) {
+            throw new Error('Could not get canvas context');
+          }
+          
+          ctx.drawImage(img, 0, 0);
+          
+          // Convert canvas to blob
+          canvas.toBlob((blob) => {
+            if (!blob) {
+              // Fallback to direct link if blob creation fails
+              const link = document.createElement('a');
+              link.href = qrCodeUrl;
+              link.download = `qr-code-${paymentMethodName.toLowerCase().replace(/\s+/g, '-')}.png`;
+              link.style.display = 'none';
+              document.body.appendChild(link);
+              link.click();
+              document.body.removeChild(link);
+              return;
+            }
+            
+            // Create download link from blob
+            const url = window.URL.createObjectURL(blob);
             const link = document.createElement('a');
-            link.href = qrCodeUrl;
+            link.href = url;
             link.download = `qr-code-${paymentMethodName.toLowerCase().replace(/\s+/g, '-')}.png`;
             link.style.display = 'none';
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
-            return;
-          }
-          
-          // Create download link from blob
-          const url = window.URL.createObjectURL(blob);
+            window.URL.revokeObjectURL(url);
+          }, 'image/png');
+        } catch (error) {
+          console.error('Canvas conversion failed:', error);
+          // Fallback to direct link
           const link = document.createElement('a');
-          link.href = url;
+          link.href = qrCodeUrl;
           link.download = `qr-code-${paymentMethodName.toLowerCase().replace(/\s+/g, '-')}.png`;
           link.style.display = 'none';
           document.body.appendChild(link);
           link.click();
           document.body.removeChild(link);
-          window.URL.revokeObjectURL(url);
-        }, 'image/png');
-      } catch (error) {
-        console.error('Canvas conversion failed:', error);
-        // Fallback to direct link
+        }
+      };
+      
+      img.onerror = () => {
+        // If image fails to load, try direct link as fallback
         const link = document.createElement('a');
         link.href = qrCodeUrl;
         link.download = `qr-code-${paymentMethodName.toLowerCase().replace(/\s+/g, '-')}.png`;
@@ -375,23 +405,15 @@ Please confirm this order to proceed. Thank you for choosing AmberKin! 🎮
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-      }
-    };
-    
-    img.onerror = () => {
-      // If image fails to load, try direct link as fallback
-      console.log('Image load failed, trying direct link');
-      const link = document.createElement('a');
-      link.href = qrCodeUrl;
-      link.download = `qr-code-${paymentMethodName.toLowerCase().replace(/\s+/g, '-')}.png`;
-      link.style.display = 'none';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    };
-    
-    // Load the image
-    img.src = qrCodeUrl;
+      };
+      
+      // Load the image
+      img.src = qrCodeUrl;
+    } catch (error) {
+      console.error('Download failed:', error);
+      // Last resort: open in new window
+      window.open(qrCodeUrl, '_blank');
+    }
   };
 
   const handlePlaceOrder = () => {
