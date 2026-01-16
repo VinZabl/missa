@@ -41,6 +41,8 @@ const Checkout: React.FC<CheckoutProps> = ({ cartItems, totalPrice, onBack, onNa
   const [orderId, setOrderId] = useState<string | null>(null);
   const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
+  const [generatedInvoiceNumber, setGeneratedInvoiceNumber] = useState<string | null>(null);
+  const [invoiceNumberDate, setInvoiceNumberDate] = useState<string | null>(null); // Track the date when invoice was generated
 
   // Extract original menu item ID from cart item ID (format: "menuItemId:::CART:::timestamp-random")
   // This allows us to group all packages from the same game together
@@ -298,6 +300,8 @@ const Checkout: React.FC<CheckoutProps> = ({ cartItems, totalPrice, onBack, onNa
     setReceiptPreview(null);
     setReceiptError(null);
     setHasCopiedMessage(false); // Reset copy state when receipt is removed
+    setGeneratedInvoiceNumber(null); // Reset invoice number when receipt is removed
+    setInvoiceNumberDate(null); // Reset invoice date when receipt is removed
   };
 
   // Generate invoice number in format: 1M12D1 (month, day, order number)
@@ -336,10 +340,40 @@ const Checkout: React.FC<CheckoutProps> = ({ cartItems, totalPrice, onBack, onNa
     }
   };
 
+  // Generate and store invoice number (called when copy button is clicked)
+  const generateAndStoreInvoiceNumber = async (): Promise<string> => {
+    const today = new Date().toDateString(); // Get current date string
+    
+    // Check if invoice number exists and is from today
+    if (generatedInvoiceNumber && invoiceNumberDate === today) {
+      // Already generated for today, return stored value
+      return generatedInvoiceNumber;
+    }
+    
+    // Reset if it's a new day
+    if (invoiceNumberDate !== today) {
+      setGeneratedInvoiceNumber(null);
+    }
+    
+    const invoiceNumber = await generateInvoiceNumber();
+    setGeneratedInvoiceNumber(invoiceNumber);
+    setInvoiceNumberDate(today); // Store the date when invoice was generated
+    return invoiceNumber;
+  };
+
   // Generate the order message text
-  const generateOrderMessage = async (orderIdForMessage?: string | null): Promise<string> => {
-    // Generate invoice number
-    const invoiceDisplay = await generateInvoiceNumber();
+  const generateOrderMessage = async (orderIdForMessage?: string | null, useStoredInvoice?: boolean): Promise<string> => {
+    // Use stored invoice number if available, otherwise generate new one
+    let invoiceDisplay: string;
+    if (useStoredInvoice && generatedInvoiceNumber) {
+      invoiceDisplay = generatedInvoiceNumber;
+    } else if (useStoredInvoice) {
+      // Generate and store if not yet generated
+      invoiceDisplay = await generateAndStoreInvoiceNumber();
+    } else {
+      // Generate new invoice number (for messenger flow without copy)
+      invoiceDisplay = await generateInvoiceNumber();
+    }
 
     // Check if using multiple accounts
     const isMultipleAccounts = useMultipleAccounts && canUseMultipleAccounts && itemsByGameAndVariation.length > 0;
@@ -507,7 +541,10 @@ PAYMENT RECEIPT: ${receiptImageUrl || 'N/A'}`;
 
   const handleCopyMessage = async () => {
     try {
-      const message = await generateOrderMessage(orderId);
+      // Generate and store invoice number when copy button is clicked
+      await generateAndStoreInvoiceNumber();
+      // Use stored invoice number for the message
+      const message = await generateOrderMessage(orderId, true);
       await navigator.clipboard.writeText(message);
       setCopied(true);
       setHasCopiedMessage(true); // Mark that copy button has been clicked
@@ -613,7 +650,8 @@ PAYMENT RECEIPT: ${receiptImageUrl || 'N/A'}`;
       return;
     }
 
-    const orderDetails = await generateOrderMessage(orderId);
+    // Use stored invoice number if copy button was clicked, otherwise generate new one
+    const orderDetails = await generateOrderMessage(orderId, generatedInvoiceNumber !== null);
     const encodedMessage = encodeURIComponent(orderDetails);
     const messengerUrl = `https://m.me/AmberKinGamerXtream?text=${encodedMessage}`;
     
@@ -711,6 +749,8 @@ PAYMENT RECEIPT: ${receiptImageUrl || 'N/A'}`;
       if (newOrder) {
         setOrderId(newOrder.id);
         setIsOrderModalOpen(true);
+        setGeneratedInvoiceNumber(null); // Reset invoice number after order is created
+        setInvoiceNumberDate(null); // Reset invoice date after order is created
       } else {
         setReceiptError('Failed to create order. Please try again.');
       }
