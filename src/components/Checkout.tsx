@@ -37,6 +37,7 @@ const Checkout: React.FC<CheckoutProps> = ({ cartItems, totalPrice, onBack, onNa
   const [copiedAccountName, setCopiedAccountName] = useState(false);
   const [bulkInputValues, setBulkInputValues] = useState<Record<string, string>>({});
   const [bulkSelectedGames, setBulkSelectedGames] = useState<string[]>([]);
+  const [useMultipleAccounts, setUseMultipleAccounts] = useState(false);
   const [orderId, setOrderId] = useState<string | null>(null);
   const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
@@ -68,6 +69,83 @@ const Checkout: React.FC<CheckoutProps> = ({ cartItems, totalPrice, onBack, onNa
   }, [cartItems]);
 
   const hasAnyCustomFields = itemsWithCustomFields.length > 0;
+
+  // Detect if we can use multiple accounts (same game with different packages)
+  const canUseMultipleAccounts = useMemo(() => {
+    if (!hasAnyCustomFields) return false;
+    
+    // Group cart items by original menu item ID (game)
+    const itemsByGame = new Map<string, typeof cartItems>();
+    cartItems.forEach(item => {
+      const originalId = getOriginalMenuItemId(item.id);
+      if (!itemsByGame.has(originalId)) {
+        itemsByGame.set(originalId, []);
+      }
+      itemsByGame.get(originalId)!.push(item);
+    });
+    
+    // Check if any game has multiple different packages/variations
+    for (const [gameId, items] of itemsByGame.entries()) {
+      if (items.length > 1) {
+        // Check if they have different variations
+        const variationIds = new Set(items.map(item => item.selectedVariation?.id || 'none'));
+        if (variationIds.size > 1) {
+          return true;
+        }
+      }
+    }
+    
+    return false;
+  }, [cartItems, hasAnyCustomFields]);
+
+  // Get items grouped by game and variation for multiple accounts
+  const itemsByGameAndVariation = useMemo(() => {
+    if (!canUseMultipleAccounts) return [];
+    
+    const grouped = new Map<string, Map<string, typeof cartItems[0][]>>();
+    
+    cartItems.forEach(item => {
+      const originalId = getOriginalMenuItemId(item.id);
+      const variationId = item.selectedVariation?.id || 'none';
+      
+      if (!grouped.has(originalId)) {
+        grouped.set(originalId, new Map());
+      }
+      const gameGroup = grouped.get(originalId)!;
+      
+      if (!gameGroup.has(variationId)) {
+        gameGroup.set(variationId, []);
+      }
+      gameGroup.get(variationId)!.push(item);
+    });
+    
+    // Convert to array format
+    const result: Array<{
+      gameId: string;
+      gameName: string;
+      variationId: string;
+      variationName: string;
+      items: typeof cartItems[0][];
+    }> = [];
+    
+    grouped.forEach((variations, gameId) => {
+      const firstItem = Array.from(variations.values())[0][0];
+      const gameName = firstItem.name;
+      
+      variations.forEach((items, variationId) => {
+        const variationName = items[0].selectedVariation?.name || 'Default';
+        result.push({
+          gameId,
+          gameName,
+          variationId,
+          variationName,
+          items
+        });
+      });
+    });
+    
+    return result;
+  }, [cartItems, canUseMultipleAccounts]);
 
   // Get bulk input fields based on selected games - position-based
   // If selected games have N fields, show N bulk input fields
@@ -229,35 +307,97 @@ const Checkout: React.FC<CheckoutProps> = ({ cartItems, totalPrice, onBack, onNa
     setInvoiceNumberDate(null);
   };
 
-  // Generate invoice number (format: {orderNumber}M{month}D{day})
-  const generateInvoiceNumber = async (): Promise<string> => {
+  // Generate invoice number (format: {orderNumber}M{day}D{orderNumber})
+  // Example: 1M17D1 = 1st order on the 17th day of the month
+  //          1M17D2 = 2nd order on the 17th day of the month
+  // Resets daily at 12:00 AM local time
+  // The invoice number increments each time "Copy Order Message" is clicked
+  // Subsequent calls (like "Order via Messenger") will reuse the same invoice number
+  // Uses database (site_settings) to track invoice count
+  const generateInvoiceNumber = async (forceNew: boolean = false): Promise<string> => {
     const today = new Date();
     const todayStr = today.toISOString().split('T')[0]; // YYYY-MM-DD
+    const dayOfMonth = today.getDate();
     
     // Check if we already generated an invoice number for today
-    if (generatedInvoiceNumber && invoiceNumberDate === todayStr) {
+    // If forceNew is false, reuse the existing number
+    if (!forceNew && generatedInvoiceNumber && invoiceNumberDate === todayStr) {
       return generatedInvoiceNumber;
     }
 
     try {
-      // Get start and end of today in UTC
-      const startOfDay = new Date(todayStr + 'T00:00:00.000Z');
-      const endOfDay = new Date(todayStr + 'T23:59:59.999Z');
+      // Get invoice count from database (site_settings table)
+      const countSettingId = 'invoice_count';
+      const dateSettingId = 'invoice_count_date';
+      
+      // Fetch current invoice count and date from database
+      const { data: countData, error: countError } = await supabase
+        .from('site_settings')
+        .select('value')
+        .eq('id', countSettingId)
+        .maybeSingle();
+      
+      if (countError) {
+        console.error('Error fetching invoice count:', countError);
+        // Continue with default value
+      }
+      
+      const { data: dateData, error: dateError } = await supabase
+        .from('site_settings')
+        .select('value')
+        .eq('id', dateSettingId)
+        .maybeSingle();
+      
+      if (dateError) {
+        console.error('Error fetching invoice count date:', dateError);
+        // Continue with default value
+      }
+      
+      let currentCount = 0;
+      const lastDate = dateData?.value || null;
+      
+      // Check if we need to reset (new day)
+      if (lastDate !== todayStr) {
+        // New day - reset the count to 0
+        currentCount = 0;
+        
+        // Update both count and date in database
+        await supabase
+          .from('site_settings')
+          .upsert({ id: countSettingId, value: '0', type: 'number', description: 'Current invoice count for the day' }, { onConflict: 'id' });
+        
+        await supabase
+          .from('site_settings')
+          .upsert({ id: dateSettingId, value: todayStr, type: 'text', description: 'Date of the current invoice count' }, { onConflict: 'id' });
+      } else {
+        // Same day - get current count from database
+        currentCount = countData?.value ? parseInt(countData.value, 10) : 0;
+      }
+      
+      // If forceNew is true (Copy button clicked), increment the count
+      if (forceNew) {
+        currentCount += 1;
+        
+        // Update count in database
+        await supabase
+          .from('site_settings')
+          .upsert({ id: countSettingId, value: currentCount.toString(), type: 'number', description: 'Current invoice count for the day' }, { onConflict: 'id' });
+      } else {
+        // If forceNew is false and no count exists, start at 1
+        if (currentCount === 0) {
+          currentCount = 1;
+          await supabase
+            .from('site_settings')
+            .upsert({ id: countSettingId, value: currentCount.toString(), type: 'number', description: 'Current invoice count for the day' }, { onConflict: 'id' });
+        }
+      }
 
-      // Count orders created today
-      const { count, error } = await supabase
-        .from('orders')
-        .select('*', { count: 'exact', head: true })
-        .gte('created_at', startOfDay.toISOString())
-        .lte('created_at', endOfDay.toISOString());
+      const orderNumber = currentCount;
 
-      if (error) throw error;
-
-      const orderNumber = (count || 0) + 1;
-      const month = today.getMonth() + 1; // 1-12
-      const day = today.getDate();
-
-      const invoiceNumber = `${orderNumber}M${month}D${day}`;
+      // Format: 1M{day}D{orderNumber}
+      // Example: 1M17D1 (1st order on day 17), 1M17D2 (2nd order on day 17), etc.
+      // The first number is always 1, the last number is the order number
+      const invoiceNumber = `1M${dayOfMonth}D${orderNumber}`;
       
       // Store the generated invoice number and date
       setGeneratedInvoiceNumber(invoiceNumber);
@@ -267,16 +407,18 @@ const Checkout: React.FC<CheckoutProps> = ({ cartItems, totalPrice, onBack, onNa
     } catch (error) {
       console.error('Error generating invoice number:', error);
       // Fallback to a simple format if there's an error
-      const month = today.getMonth() + 1;
-      const day = today.getDate();
-      return `1M${month}D${day}`;
+      const today = new Date();
+      const dayOfMonth = today.getDate();
+      return `1M${dayOfMonth}D1`;
     }
   };
 
   // Generate the order message text
-  const generateOrderMessage = async (): Promise<string> => {
+  const generateOrderMessage = async (forceNewInvoice: boolean = false): Promise<string> => {
     // Generate invoice number first
-    const invoiceNumber = await generateInvoiceNumber();
+    // forceNewInvoice is true when "Copy Order Message" is clicked to generate a new number
+    // forceNewInvoice is false when "Order via Messenger" is clicked to reuse existing number
+    const invoiceNumber = await generateInvoiceNumber(forceNewInvoice);
     
     // Build message lines
     const lines: string[] = [];
@@ -285,8 +427,69 @@ const Checkout: React.FC<CheckoutProps> = ({ cartItems, totalPrice, onBack, onNa
     lines.push(`INVOICE # ${invoiceNumber}`);
     lines.push(''); // Break after invoice
     
-    // Build game/order sections
-    if (hasAnyCustomFields) {
+    // Handle multiple accounts mode
+    if (useMultipleAccounts && canUseMultipleAccounts) {
+      // Group by game and variation
+      const gameGroups = new Map<string, Array<{ variationName: string; items: CartItem[]; fields: Array<{ label: string, value: string }> }>>();
+      
+      itemsByGameAndVariation.forEach(({ gameId, gameName, variationId, variationName, items }) => {
+        const firstItem = items[0];
+        if (!firstItem.customFields) return;
+        
+        const fields = firstItem.customFields.map(field => {
+          const valueKey = `${gameId}_${variationId}_${field.key}`;
+          const value = customFieldValues[valueKey] || '';
+          return value ? { label: field.label, value } : null;
+        }).filter(Boolean) as Array<{ label: string, value: string }>;
+        
+        if (fields.length === 0) return;
+        
+        if (!gameGroups.has(gameName)) {
+          gameGroups.set(gameName, []);
+        }
+        gameGroups.get(gameName)!.push({ variationName, items, fields });
+      });
+      
+      // Build message for each game (game name mentioned once)
+      gameGroups.forEach((variations, gameName) => {
+        lines.push(`GAME: ${gameName}`);
+        
+        variations.forEach(({ variationName, items, fields }) => {
+          // ID & SERVER or other fields
+          if (fields.length === 1) {
+            lines.push(`${fields[0].label}: ${fields[0].value}`);
+          } else if (fields.length > 1) {
+            // Combine fields with & if multiple
+            const allValuesSame = fields.every(f => f.value === fields[0].value);
+            if (allValuesSame) {
+              const labels = fields.map(f => f.label);
+              if (labels.length === 2) {
+                lines.push(`${labels[0]} & ${labels[1]}: ${fields[0].value}`);
+              } else {
+                const allButLast = labels.slice(0, -1).join(', ');
+                const lastLabel = labels[labels.length - 1];
+                lines.push(`${allButLast} & ${lastLabel}: ${fields[0].value}`);
+              }
+            } else {
+              // Different values, show each field separately
+              fields.forEach(field => {
+                lines.push(`${field.label}: ${field.value}`);
+              });
+            }
+          }
+          
+          // Order items for this variation
+          items.forEach(item => {
+            const variationText = item.selectedVariation ? ` ${item.selectedVariation.name}` : '';
+            const addOnsText = item.selectedAddOns && item.selectedAddOns.length > 0
+              ? ` + ${item.selectedAddOns.map(a => a.name).join(', ')}`
+              : '';
+            lines.push(`ORDER: ${item.name}${variationText}${addOnsText} x${item.quantity} - ₱${item.totalPrice * item.quantity}`);
+          });
+        });
+      });
+    } else if (hasAnyCustomFields) {
+      // Build game/order sections (single account or bulk mode)
       // Group games by their field values (for bulk input)
       const gamesByFieldValues = new Map<string, { games: string[], items: CartItem[], fields: Array<{ label: string, value: string }> }>();
       const itemsWithoutFields: CartItem[] = [];
@@ -421,7 +624,9 @@ const Checkout: React.FC<CheckoutProps> = ({ cartItems, totalPrice, onBack, onNa
 
   const handleCopyMessage = async () => {
     try {
-      const message = await generateOrderMessage();
+      // Force generate a new invoice number when Copy is clicked
+      // This locks in the invoice number for this order
+      const message = await generateOrderMessage(true);
       await navigator.clipboard.writeText(message);
       setCopied(true);
       setHasCopiedMessage(true); // Mark that copy button has been clicked
@@ -527,7 +732,9 @@ const Checkout: React.FC<CheckoutProps> = ({ cartItems, totalPrice, onBack, onNa
       return;
     }
 
-    const orderDetails = await generateOrderMessage();
+    // Reuse the existing invoice number (don't generate a new one)
+    // If no invoice number exists yet, it will generate one, but ideally Copy should be clicked first
+    const orderDetails = await generateOrderMessage(false);
     const encodedMessage = encodeURIComponent(orderDetails);
     const messengerUrl = `https://m.me/AmberKinGamerXtream?text=${encodedMessage}`;
     
@@ -551,36 +758,71 @@ const Checkout: React.FC<CheckoutProps> = ({ cartItems, totalPrice, onBack, onNa
 
     try {
       // Build customer info object
-      const customerInfo: Record<string, string> = {};
+      // Build customer info - handle multiple accounts mode
+      let customerInfo: Record<string, string> | Array<{ game: string; package: string; fields: Record<string, string> }>;
       
-      // Add payment method
-      if (selectedPaymentMethod) {
-        customerInfo['Payment Method'] = selectedPaymentMethod.name;
-      }
-
-      // Add custom fields
-      if (hasAnyCustomFields) {
-        itemsWithCustomFields.forEach((item) => {
-          const originalId = getOriginalMenuItemId(item.id);
-          item.customFields?.forEach(field => {
-            const valueKey = `${originalId}_${field.key}`;
+      if (useMultipleAccounts && canUseMultipleAccounts) {
+        // Multiple accounts mode: store as array
+        const accountsData: Array<{ game: string; package: string; fields: Record<string, string> }> = [];
+        
+        itemsByGameAndVariation.forEach(({ gameId, gameName, variationId, variationName, items }) => {
+          const firstItem = items[0];
+          if (!firstItem.customFields) return;
+          
+          const fields: Record<string, string> = {};
+          firstItem.customFields.forEach(field => {
+            const valueKey = `${gameId}_${variationId}_${field.key}`;
             const value = customFieldValues[valueKey];
             if (value) {
-              customerInfo[field.label] = value;
+              fields[field.label] = value;
             }
           });
+          
+          if (Object.keys(fields).length > 0) {
+            accountsData.push({
+              game: gameName,
+              package: variationName,
+              fields
+            });
+          }
         });
+        
+        customerInfo = accountsData.length > 0 ? accountsData : {};
       } else {
-        // Default IGN field
-        if (customFieldValues['default_ign']) {
-          customerInfo['IGN'] = customFieldValues['default_ign'];
+        // Single account mode: store as flat object
+        const singleAccountInfo: Record<string, string> = {};
+        
+        // Add payment method
+        if (selectedPaymentMethod) {
+          singleAccountInfo['Payment Method'] = selectedPaymentMethod.name;
         }
+
+        // Add custom fields
+        if (hasAnyCustomFields) {
+          itemsWithCustomFields.forEach((item) => {
+            const originalId = getOriginalMenuItemId(item.id);
+            item.customFields?.forEach(field => {
+              const valueKey = `${originalId}_${field.key}`;
+              const value = customFieldValues[valueKey];
+              if (value) {
+                singleAccountInfo[field.label] = value;
+              }
+            });
+          });
+        } else {
+          // Default IGN field
+          if (customFieldValues['default_ign']) {
+            singleAccountInfo['IGN'] = customFieldValues['default_ign'];
+          }
+        }
+        
+        customerInfo = singleAccountInfo;
       }
 
       // Create order
       const newOrder = await createOrder({
         order_items: cartItems,
-        customer_info: customerInfo,
+        customer_info: customerInfo as Record<string, string> | Array<{ game: string; package: string; fields: Record<string, string> }>,
         payment_method_id: paymentMethod,
         receipt_url: receiptImageUrl,
         total_price: totalPrice,
@@ -606,7 +848,21 @@ const Checkout: React.FC<CheckoutProps> = ({ cartItems, totalPrice, onBack, onNa
       return customFieldValues['default_ign']?.trim() || false;
     }
     
-    // Check all required fields for all items (use original menu item ID)
+    // Multiple accounts mode
+    if (useMultipleAccounts && canUseMultipleAccounts) {
+      return itemsByGameAndVariation.every(({ gameId, variationId, items }) => {
+        const firstItem = items[0];
+        if (!firstItem.customFields) return true;
+        
+        return firstItem.customFields.every(field => {
+          if (!field.required) return true;
+          const valueKey = `${gameId}_${variationId}_${field.key}`;
+          return customFieldValues[valueKey]?.trim() || false;
+        });
+      });
+    }
+    
+    // Single account mode: Check all required fields for all items (use original menu item ID)
     return itemsWithCustomFields.every(item => {
       if (!item.customFields) return true;
       const originalId = getOriginalMenuItemId(item.id);
@@ -616,7 +872,7 @@ const Checkout: React.FC<CheckoutProps> = ({ cartItems, totalPrice, onBack, onNa
         return customFieldValues[valueKey]?.trim() || false;
       });
     });
-  }, [hasAnyCustomFields, itemsWithCustomFields, customFieldValues]);
+  }, [hasAnyCustomFields, itemsWithCustomFields, customFieldValues, useMultipleAccounts, canUseMultipleAccounts, itemsByGameAndVariation]);
 
   if (step === 'details') {
     return (
@@ -698,59 +954,132 @@ const Checkout: React.FC<CheckoutProps> = ({ cartItems, totalPrice, onBack, onNa
                 </div>
               )}
 
+              {/* Multiple Accounts Toggle */}
+              {canUseMultipleAccounts && (
+                <div className="mb-6 p-4 glass-strong border border-cafe-primary/30 rounded-lg">
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={useMultipleAccounts}
+                      onChange={(e) => setUseMultipleAccounts(e.target.checked)}
+                      className="w-5 h-5 text-cafe-primary border-cafe-primary/30 rounded focus:ring-cafe-primary"
+                    />
+                    <div>
+                      <p className="text-sm font-medium text-cafe-text">Multiple Accounts</p>
+                      <p className="text-xs text-cafe-textMuted">Enable if you need separate account information for different packages of the same game</p>
+                    </div>
+                  </label>
+                </div>
+              )}
+
               {/* Dynamic Custom Fields grouped by game */}
               {hasAnyCustomFields ? (
-                itemsWithCustomFields.map((item) => (
-                  <div key={item.id} className="space-y-4 pb-6 border-b border-cafe-primary/20 last:border-b-0 last:pb-0">
-                    <div className="mb-4 flex items-center gap-4">
-                      {/* Game Icon */}
-                      <div className="flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden bg-gradient-to-br from-cafe-darkCard to-cafe-darkBg">
-                        {item.image ? (
-                          <img
-                            src={item.image}
-                            alt={item.name}
-                            className="w-full h-full object-cover"
-                            onError={(e) => {
-                              e.currentTarget.style.display = 'none';
-                              e.currentTarget.nextElementSibling?.classList.remove('hidden');
-                            }}
-                          />
-                        ) : null}
-                        <div className={`w-full h-full flex items-center justify-center ${item.image ? 'hidden' : ''}`}>
-                          <div className="text-2xl opacity-20 text-gray-400">🎮</div>
+                useMultipleAccounts && canUseMultipleAccounts ? (
+                  // Multiple accounts mode: show fields for each package
+                  itemsByGameAndVariation.map(({ gameId, gameName, variationId, variationName, items }) => {
+                    const firstItem = items[0];
+                    if (!firstItem.customFields) return null;
+
+                    return (
+                      <div key={`${gameId}_${variationId}`} className="space-y-4 pb-6 border-b border-cafe-primary/20 last:border-b-0 last:pb-0">
+                        <div className="mb-4 flex items-center gap-4">
+                          {/* Game Icon */}
+                          <div className="flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden bg-gradient-to-br from-cafe-darkCard to-cafe-darkBg">
+                            {firstItem.image ? (
+                              <img
+                                src={firstItem.image}
+                                alt={gameName}
+                                className="w-full h-full object-cover"
+                                onError={(e) => {
+                                  e.currentTarget.style.display = 'none';
+                                  e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                                }}
+                              />
+                            ) : null}
+                            <div className={`absolute inset-0 flex items-center justify-center ${firstItem.image ? 'hidden' : ''}`}>
+                              <div className="text-4xl opacity-20 text-gray-400">🎮</div>
+                            </div>
+                          </div>
+                          <div>
+                            <h3 className="text-lg font-semibold text-cafe-text">{gameName}</h3>
+                            <p className="text-sm text-cafe-textMuted">{variationName}</p>
+                          </div>
+                        </div>
+                        {firstItem.customFields.map((field) => {
+                          const valueKey = `${gameId}_${variationId}_${field.key}`;
+                          return (
+                            <div key={field.key}>
+                              <label className="block text-sm font-medium text-cafe-text mb-2">
+                                {field.label} {field.required && <span className="text-red-500">*</span>}
+                              </label>
+                              <input
+                                type="text"
+                                value={customFieldValues[valueKey] || ''}
+                                onChange={(e) => setCustomFieldValues(prev => ({ ...prev, [valueKey]: e.target.value }))}
+                                className="w-full px-4 py-3 glass border border-cafe-primary/30 rounded-lg focus:ring-2 focus:ring-cafe-primary focus:border-cafe-primary transition-all duration-200 text-cafe-text placeholder-cafe-textMuted"
+                                placeholder={field.placeholder || field.label}
+                                required={field.required}
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })
+                ) : (
+                  // Single account mode: show fields grouped by game
+                  itemsWithCustomFields.map((item) => (
+                    <div key={item.id} className="space-y-4 pb-6 border-b border-cafe-primary/20 last:border-b-0 last:pb-0">
+                      <div className="mb-4 flex items-center gap-4">
+                        {/* Game Icon */}
+                        <div className="flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden bg-gradient-to-br from-cafe-darkCard to-cafe-darkBg">
+                          {item.image ? (
+                            <img
+                              src={item.image}
+                              alt={item.name}
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                e.currentTarget.style.display = 'none';
+                                e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                              }}
+                            />
+                          ) : null}
+                          <div className={`w-full h-full flex items-center justify-center ${item.image ? 'hidden' : ''}`}>
+                            <div className="text-2xl opacity-20 text-gray-400">🎮</div>
+                          </div>
+                        </div>
+                        
+                        {/* Game Title and Description */}
+                        <div className="flex-1 min-w-0">
+                          <h3 className="text-lg font-semibold text-cafe-text">{item.name}</h3>
+                          <p className="text-sm text-cafe-textMuted">Please provide the following information for this game</p>
                         </div>
                       </div>
-                      
-                      {/* Game Title and Description */}
-                      <div className="flex-1 min-w-0">
-                      <h3 className="text-lg font-semibold text-cafe-text">{item.name}</h3>
-                      <p className="text-sm text-cafe-textMuted">Please provide the following information for this game</p>
-                      </div>
+                      {item.customFields?.map((field) => {
+                        const originalId = getOriginalMenuItemId(item.id);
+                        const valueKey = `${originalId}_${field.key}`;
+                        return (
+                          <div key={valueKey}>
+                            <label className="block text-sm font-medium text-cafe-text mb-2">
+                              {field.label} {field.required && <span className="text-red-500">*</span>}
+                            </label>
+                            <input
+                              type="text"
+                              value={customFieldValues[valueKey] || ''}
+                              onChange={(e) => setCustomFieldValues({
+                                ...customFieldValues,
+                                [valueKey]: e.target.value
+                              })}
+                              className="w-full px-4 py-3 glass border border-cafe-primary/30 rounded-lg focus:ring-2 focus:ring-cafe-primary focus:border-cafe-primary transition-all duration-200 text-cafe-text placeholder-cafe-textMuted"
+                              placeholder={field.placeholder || field.label}
+                              required={field.required}
+                            />
+                          </div>
+                        );
+                      })}
                     </div>
-                    {item.customFields?.map((field) => {
-                      const originalId = getOriginalMenuItemId(item.id);
-                      const valueKey = `${originalId}_${field.key}`;
-                      return (
-                        <div key={valueKey}>
-                          <label className="block text-sm font-medium text-cafe-text mb-2">
-                            {field.label} {field.required && <span className="text-red-500">*</span>}
-                          </label>
-                          <input
-                            type="text"
-                            value={customFieldValues[valueKey] || ''}
-                            onChange={(e) => setCustomFieldValues({
-                              ...customFieldValues,
-                              [valueKey]: e.target.value
-                            })}
-                            className="w-full px-4 py-3 glass border border-cafe-primary/30 rounded-lg focus:ring-2 focus:ring-cafe-primary focus:border-cafe-primary transition-all duration-200 text-cafe-text placeholder-cafe-textMuted"
-                            placeholder={field.placeholder || field.label}
-                            required={field.required}
-                          />
-                        </div>
-                      );
-                    })}
-                  </div>
-                ))
+                  ))
+                )
               ) : (
                 <div>
                   <label className="block text-sm font-medium text-cafe-text mb-2">

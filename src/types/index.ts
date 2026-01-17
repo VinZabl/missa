@@ -107,7 +107,7 @@ export type OrderStatus = 'pending' | 'processing' | 'approved' | 'rejected';
 export interface Order {
   id: string;
   order_items: CartItem[];
-  customer_info: Record<string, string>; // e.g., { "IGN": "Miki", "Payment Method": "GCash" }
+  customer_info: Record<string, string> | Array<{ game: string; package: string; fields: Record<string, string> }>; // Single account: { "IGN": "Miki", "Payment Method": "GCash" } | Multiple accounts: [{ game: "MLBB", package: "Package 1", fields: {...} }]
   payment_method_id: string;
   receipt_url: string;
   total_price: number;
@@ -118,7 +118,7 @@ export interface Order {
 
 export interface CreateOrderData {
   order_items: CartItem[];
-  customer_info: Record<string, string>;
+  customer_info: Record<string, string> | Array<{ game: string; package: string; fields: Record<string, string> }>;
   payment_method_id: string;
   receipt_url: string;
   total_price: number;
