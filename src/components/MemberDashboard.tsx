@@ -129,6 +129,28 @@ const MemberDashboard: React.FC = () => {
     await fetchMemberOrders(member.id);
   };
 
+  const getOrderStatus = (order: Order) => {
+    const orderOption = order.order_option || 'place_order';
+    // For messenger orders with pending status, show "Done via Messenger"
+    if (orderOption === 'order_via_messenger' && order.status === 'pending') {
+      return 'Done via Messenger';
+    }
+    return order.status;
+  };
+
+  const getOrderStatusClass = (order: Order) => {
+    const displayStatus = getOrderStatus(order);
+    if (displayStatus === 'Done via Messenger' || displayStatus === 'approved') {
+      return 'bg-green-100 text-green-800';
+    } else if (displayStatus === 'rejected') {
+      return 'bg-red-100 text-red-800';
+    } else if (displayStatus === 'processing') {
+      return 'bg-yellow-100 text-yellow-800';
+    } else {
+      return 'bg-gray-100 text-gray-800';
+    }
+  };
+
   const loadGameDiscounts = async () => {
     if (!selectedMember || !selectedGame) return;
     
@@ -662,17 +684,9 @@ const MemberDashboard: React.FC = () => {
                               <p className="text-xs text-gray-600">{new Date(order.created_at).toLocaleString()}</p>
                             </div>
                             <span
-                              className={`px-2 py-1 rounded text-xs font-semibold flex-shrink-0 ml-2 ${
-                                order.status === 'approved'
-                                  ? 'bg-green-100 text-green-800'
-                                  : order.status === 'rejected'
-                                  ? 'bg-red-100 text-red-800'
-                                  : order.status === 'processing'
-                                  ? 'bg-yellow-100 text-yellow-800'
-                                  : 'bg-gray-100 text-gray-800'
-                              }`}
+                              className={`px-2 py-1 rounded text-xs font-semibold flex-shrink-0 ml-2 ${getOrderStatusClass(order)}`}
                             >
-                              {order.status}
+                              {getOrderStatus(order)}
                             </span>
                           </div>
                           <div className="space-y-2 pt-3 border-t border-gray-200">
@@ -723,17 +737,9 @@ const MemberDashboard: React.FC = () => {
                               </td>
                               <td className="p-3">
                                 <span
-                                  className={`px-2 py-1 rounded text-xs font-semibold ${
-                                    order.status === 'approved'
-                                      ? 'bg-green-100 text-green-800'
-                                      : order.status === 'rejected'
-                                      ? 'bg-red-100 text-red-800'
-                                      : order.status === 'processing'
-                                      ? 'bg-yellow-100 text-yellow-800'
-                                      : 'bg-gray-100 text-gray-800'
-                                  }`}
+                                  className={`px-2 py-1 rounded text-xs font-semibold ${getOrderStatusClass(order)}`}
                                 >
-                                  {order.status}
+                                  {getOrderStatus(order)}
                                 </span>
                               </td>
                               <td className="p-3 text-gray-900 font-bold">

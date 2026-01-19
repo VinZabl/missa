@@ -45,6 +45,28 @@ const MemberProfile: React.FC<MemberProfileProps> = ({ onClose, onLogout }) => {
     onClose();
   };
 
+  const getOrderStatus = (order: Order) => {
+    const orderOption = order.order_option || 'place_order';
+    // For messenger orders with pending status, show "Done via Messenger"
+    if (orderOption === 'order_via_messenger' && order.status === 'pending') {
+      return 'Done via Messenger';
+    }
+    return order.status;
+  };
+
+  const getOrderStatusClass = (order: Order) => {
+    const displayStatus = getOrderStatus(order);
+    if (displayStatus === 'Done via Messenger' || displayStatus === 'approved') {
+      return 'bg-green-500/20 text-green-300';
+    } else if (displayStatus === 'rejected') {
+      return 'bg-red-500/20 text-red-300';
+    } else if (displayStatus === 'processing') {
+      return 'bg-yellow-500/20 text-yellow-300';
+    } else {
+      return 'bg-gray-500/20 text-gray-300';
+    }
+  };
+
   if (!currentMember) return null;
 
   return (
@@ -131,17 +153,9 @@ const MemberProfile: React.FC<MemberProfileProps> = ({ onClose, onLogout }) => {
                           <p className="text-xs text-cafe-text/70">{new Date(order.created_at).toLocaleString()}</p>
                         </div>
                         <span
-                          className={`px-2 py-1 rounded text-xs font-semibold flex-shrink-0 ml-2 ${
-                            order.status === 'approved'
-                              ? 'bg-green-500/20 text-green-300'
-                              : order.status === 'rejected'
-                              ? 'bg-red-500/20 text-red-300'
-                              : order.status === 'processing'
-                              ? 'bg-yellow-500/20 text-yellow-300'
-                              : 'bg-gray-500/20 text-gray-300'
-                          }`}
+                          className={`px-2 py-1 rounded text-xs font-semibold flex-shrink-0 ml-2 ${getOrderStatusClass(order)}`}
                         >
-                          {order.status}
+                          {getOrderStatus(order)}
                         </span>
                       </div>
                       <div className="space-y-2 pt-3 border-t border-white/20">
