@@ -18,8 +18,7 @@ const SiteSettingsManager: React.FC = () => {
     footer_social_3: '',
     footer_social_4: '',
     footer_support_url: '',
-    order_option: 'order_via_messenger' as 'order_via_messenger' | 'place_order',
-    notification_volume: 0.5
+    order_option: 'order_via_messenger' as 'order_via_messenger' | 'place_order'
   });
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string>('');
@@ -52,18 +51,17 @@ const SiteSettingsManager: React.FC = () => {
         footer_social_3: siteSettings.footer_social_3 || '',
         footer_social_4: siteSettings.footer_social_4 || '',
         footer_support_url: siteSettings.footer_support_url || '',
-        order_option: siteSettings.order_option || 'order_via_messenger',
-        notification_volume: siteSettings.notification_volume ?? 0.5
+        order_option: siteSettings.order_option || 'order_via_messenger'
       });
       setLogoPreview(siteSettings.site_logo);
     }
   }, [siteSettings]);
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    const { name, value, type } = e.target;
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
     setFormData(prev => ({
       ...prev,
-      [name]: type === 'number' ? parseFloat(value) || 0 : value
+      [name]: value
     }));
   };
 
@@ -92,6 +90,7 @@ const SiteSettingsManager: React.FC = () => {
       // Update all settings
       await updateSiteSettings({
         site_name: formData.site_name,
+        site_description: formData.site_description,
         currency: formData.currency,
         currency_code: formData.currency_code,
         site_logo: logoUrl,
@@ -100,8 +99,7 @@ const SiteSettingsManager: React.FC = () => {
         footer_social_3: formData.footer_social_3,
         footer_social_4: formData.footer_social_4,
         footer_support_url: formData.footer_support_url,
-        order_option: formData.order_option,
-        notification_volume: formData.notification_volume
+        order_option: formData.order_option
       });
 
       setIsEditing(false);
@@ -122,9 +120,7 @@ const SiteSettingsManager: React.FC = () => {
         footer_social_2: siteSettings.footer_social_2 || '',
         footer_social_3: siteSettings.footer_social_3 || '',
         footer_social_4: siteSettings.footer_social_4 || '',
-        footer_support_url: siteSettings.footer_support_url || '',
-        order_option: siteSettings.order_option || 'order_via_messenger',
-        notification_volume: siteSettings.notification_volume ?? 0.5
+        footer_support_url: siteSettings.footer_support_url || ''
       });
       setLogoPreview(siteSettings.site_logo);
     }
@@ -247,7 +243,7 @@ const SiteSettingsManager: React.FC = () => {
   return (
     <div className="bg-white rounded-xl shadow-sm p-6">
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-noto font-semibold text-black">Site Settings</h2>
+        <h2 className="text-black">Site Settings</h2>
         {!isEditing ? (
           <button
             onClick={() => setIsEditing(true)}
@@ -280,7 +276,7 @@ const SiteSettingsManager: React.FC = () => {
       <div className="space-y-6">
         {/* Site Logo */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className="block text-xs font-medium text-gray-700 mb-2">
             Site Logo
           </label>
           <div className="flex items-center space-x-4">
@@ -292,7 +288,7 @@ const SiteSettingsManager: React.FC = () => {
                   className="w-full h-full object-cover"
                 />
               ) : (
-                <div className="text-2xl text-gray-400">☕</div>
+                <div className="text-xs text-gray-400">☕</div>
               )}
             </div>
             {isEditing && (
@@ -318,7 +314,7 @@ const SiteSettingsManager: React.FC = () => {
 
         {/* Site Name */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className="block text-xs font-medium text-gray-700 mb-2">
             Site Name
           </label>
           {isEditing ? (
@@ -331,14 +327,33 @@ const SiteSettingsManager: React.FC = () => {
               placeholder="Enter site name"
             />
           ) : (
-            <p className="text-lg font-medium text-black">{siteSettings?.site_name}</p>
+            <p className="text-xs font-medium text-black">{siteSettings?.site_name}</p>
+          )}
+        </div>
+
+        {/* Site Description */}
+        <div>
+          <label className="block text-xs font-medium text-gray-700 mb-2">
+            Site Description
+          </label>
+          {isEditing ? (
+            <textarea
+              name="site_description"
+              value={formData.site_description}
+              onChange={handleInputChange}
+              rows={3}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
+              placeholder="Enter site description"
+            />
+          ) : (
+            <p className="text-gray-600">{siteSettings?.site_description}</p>
           )}
         </div>
 
         {/* Currency Settings */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-xs font-medium text-gray-700 mb-2">
               Currency Symbol
             </label>
             {isEditing ? (
@@ -351,11 +366,11 @@ const SiteSettingsManager: React.FC = () => {
                 placeholder="e.g., ₱, $, €"
               />
             ) : (
-              <p className="text-lg font-medium text-black">{siteSettings?.currency}</p>
+              <p className="text-xs font-medium text-black">{siteSettings?.currency}</p>
             )}
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-xs font-medium text-gray-700 mb-2">
               Currency Code
             </label>
             {isEditing ? (
@@ -368,24 +383,24 @@ const SiteSettingsManager: React.FC = () => {
                 placeholder="e.g., PHP, USD, EUR"
               />
             ) : (
-              <p className="text-lg font-medium text-black">{siteSettings?.currency_code}</p>
+              <p className="text-xs font-medium text-black">{siteSettings?.currency_code}</p>
             )}
           </div>
         </div>
 
-        {/* Footer Social Media Links */}
+        {/* Footer Links */}
         <div className="border-t border-gray-200 pt-6 mt-6">
-          <h3 className="text-lg font-semibold text-black mb-4">Footer Social Media Links</h3>
-          <p className="text-sm text-gray-600 mb-4">
-            Add your social media URLs to display them as icons in the footer. Leave blank to hide an icon.
+          <h3 className="text-xs font-semibold text-black mb-4">Footer Links</h3>
+          <p className="text-xs text-gray-600 mb-4">
+            Configure social media links and customer support link for the footer. Leave blank to hide an item.
           </p>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Social Media Link 1 (Facebook)</label>
+              <label className="block text-xs font-medium text-gray-700 mb-2">Social Media Link 1 (Facebook)</label>
               {isEditing ? (
                 <input
-                  type="url"
+                  type="text"
                   name="footer_social_1"
                   value={formData.footer_social_1}
                   onChange={handleInputChange}
@@ -398,10 +413,10 @@ const SiteSettingsManager: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Social Media Link 2 (Instagram)</label>
+              <label className="block text-xs font-medium text-gray-700 mb-2">Social Media Link 2 (Instagram)</label>
               {isEditing ? (
                 <input
-                  type="url"
+                  type="text"
                   name="footer_social_2"
                   value={formData.footer_social_2}
                   onChange={handleInputChange}
@@ -414,10 +429,10 @@ const SiteSettingsManager: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Social Media Link 3 (Twitter/X)</label>
+              <label className="block text-xs font-medium text-gray-700 mb-2">Social Media Link 3 (Twitter/X)</label>
               {isEditing ? (
                 <input
-                  type="url"
+                  type="text"
                   name="footer_social_3"
                   value={formData.footer_social_3}
                   onChange={handleInputChange}
@@ -430,10 +445,10 @@ const SiteSettingsManager: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Social Media Link 4 (YouTube)</label>
+              <label className="block text-xs font-medium text-gray-700 mb-2">Social Media Link 4 (YouTube)</label>
               {isEditing ? (
                 <input
-                  type="url"
+                  type="text"
                   name="footer_social_4"
                   value={formData.footer_social_4}
                   onChange={handleInputChange}
@@ -446,15 +461,15 @@ const SiteSettingsManager: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Customer Support URL</label>
+              <label className="block text-xs font-medium text-gray-700 mb-2">Customer Support Link</label>
               {isEditing ? (
                 <input
-                  type="url"
+                  type="text"
                   name="footer_support_url"
                   value={formData.footer_support_url}
                   onChange={handleInputChange}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
-                  placeholder="https://yourwebsite.com/support or tel:+1234567890"
+                  placeholder="https://example.com/support or tel:+639xxxxxxxxx"
                 />
               ) : (
                 <p className="text-gray-600 break-all">{siteSettings?.footer_support_url || '-'}</p>
@@ -465,21 +480,21 @@ const SiteSettingsManager: React.FC = () => {
 
         {/* Order Option */}
         <div className="border-t border-gray-200 pt-6 mt-6">
-          <h3 className="text-lg font-semibold text-black mb-4">Order Option</h3>
-          <p className="text-sm text-gray-600 mb-4">
+          <h3 className="text-xs font-semibold text-black mb-4">Order Option</h3>
+          <p className="text-xs text-gray-600 mb-4">
             Choose how customers can place orders. "Order via Messenger" shows receipt upload, copy message, and messenger button. "Place Order" shows only receipt upload and place order button.
           </p>
 
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-xs font-medium text-gray-700 mb-2">
                 Order Method
               </label>
               {isEditing ? (
                 <select
                   name="order_option"
                   value={formData.order_option}
-                  onChange={handleInputChange}
+                  onChange={(e) => setFormData(prev => ({ ...prev, order_option: e.target.value as 'order_via_messenger' | 'place_order' }))}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
                 >
                   <option value="order_via_messenger">Order via Messenger</option>
@@ -494,40 +509,12 @@ const SiteSettingsManager: React.FC = () => {
           </div>
         </div>
 
-        {/* Notification Volume */}
-        <div className="border-t border-gray-200 pt-6 mt-6">
-          <h3 className="text-lg font-semibold text-black mb-4">Notification Settings</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Notification Volume (0.0 - 1.0)
-              </label>
-              {isEditing ? (
-                <input
-                  type="number"
-                  name="notification_volume"
-                  min="0"
-                  max="1"
-                  step="0.1"
-                  value={formData.notification_volume}
-                  onChange={handleInputChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
-                />
-              ) : (
-                <p className="text-gray-600">
-                  {siteSettings?.notification_volume ?? 0.5}
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
-
         {/* Password Change Section */}
         <div className="border-t border-gray-200 pt-6 mt-6">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center space-x-2">
               <Lock className="h-5 w-5 text-gray-600" />
-              <h3 className="text-lg font-semibold text-black">Admin Password</h3>
+              <h3 className="text-xs font-semibold text-black">Admin Password</h3>
             </div>
             {!showPasswordSection && (
               <button
@@ -555,7 +542,7 @@ const SiteSettingsManager: React.FC = () => {
               )}
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-xs font-medium text-gray-700 mb-2">
                   Current Password
                 </label>
                 <div className="relative">
@@ -577,7 +564,7 @@ const SiteSettingsManager: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-xs font-medium text-gray-700 mb-2">
                   New Password
                 </label>
                 <div className="relative">
@@ -599,7 +586,7 @@ const SiteSettingsManager: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-xs font-medium text-gray-700 mb-2">
                   Confirm New Password
                 </label>
                 <div className="relative">

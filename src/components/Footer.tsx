@@ -1,11 +1,10 @@
 import React from 'react';
-import { Facebook, Instagram, Twitter, Youtube, Linkedin, Globe } from 'lucide-react';
+import { Facebook, Instagram, Twitter, Youtube } from 'lucide-react';
 import { useSiteSettings } from '../hooks/useSiteSettings';
 
 const Footer: React.FC = () => {
   const { siteSettings } = useSiteSettings();
 
-  // Social media links configuration
   const socialLinks = [
     { icon: Facebook, url: siteSettings?.footer_social_1, label: 'Facebook' },
     { icon: Instagram, url: siteSettings?.footer_social_2, label: 'Instagram' },
@@ -25,7 +24,7 @@ const Footer: React.FC = () => {
       title: 'SUPPORT',
       links: [
         { label: 'FAQ', url: '#' },
-        { label: 'Contact Us', url: '#' },
+        { label: 'Contact Us', url: siteSettings?.footer_support_url || '#' },
         { label: 'Submit a Ticket', url: '#' },
       ]
     },
@@ -55,13 +54,13 @@ const Footer: React.FC = () => {
   ];
 
   return (
-    <footer className="mt-16" style={{ backgroundColor: '#0A0A0A', borderTop: '1px solid rgba(0, 206, 209, 0.2)' }}>
+    <footer className="mt-16 bg-cafe-darkBg">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-12">
         {/* Top Section - Multi-column Links */}
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-8 mb-8">
           {footerColumns.map((column, index) => (
             <div key={index} className="flex flex-col">
-              <h4 className="text-sm font-bold text-white uppercase mb-4">
+              <h4 className="text-sm font-bold text-cafe-text uppercase mb-4 font-montserrat">
                 {column.title}
               </h4>
               <ul className="space-y-2">
@@ -69,7 +68,7 @@ const Footer: React.FC = () => {
                   <li key={linkIndex}>
                     <a
                       href={link.url}
-                      className="text-xs text-gray-300 hover:text-cafe-primary transition-colors duration-200"
+                      className="text-xs text-cafe-textMuted hover:text-cafe-text transition-colors duration-200"
                     >
                       {link.label}
                     </a>
@@ -81,9 +80,9 @@ const Footer: React.FC = () => {
         </div>
 
         {/* Separator Line */}
-        <div id="footer-separator" className="border-t border-gray-700 my-8"></div>
+        <div id="footer-separator" className="border-t border-cafe-primary/20 my-8"></div>
 
-        {/* Bottom Section - Social Media Icons & Copyright */}
+        {/* Bottom Section - Social Media & Copyright */}
         <div className="flex flex-col items-center gap-6">
           {/* Social Media Icons - Centered */}
           {socialLinks.length > 0 && (
@@ -96,10 +95,10 @@ const Footer: React.FC = () => {
                     href={link.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="w-10 h-10 rounded-full border-2 border-cafe-primary flex items-center justify-center hover:bg-cafe-primary hover:text-white transition-all duration-200"
+                    className="p-2 rounded-full glass hover:glass-strong transition-all duration-200 text-cafe-text hover:text-cafe-primary"
                     aria-label={link.label}
                   >
-                    <Icon className="h-5 w-5 text-cafe-primary" />
+                    <Icon className="h-5 w-5" />
                   </a>
                 );
               })}
@@ -107,9 +106,12 @@ const Footer: React.FC = () => {
           )}
 
           {/* Copyright - Centered at the bottom */}
-          <div className="text-center">
-            <p className="text-sm text-gray-300">
-              © {new Date().getFullYear()} {siteSettings?.site_name || 'Diginix'}. All rights reserved.
+          <div className="flex flex-col items-center gap-2">
+            <p className="text-sm text-cafe-textMuted text-center">
+              © 2026 {siteSettings?.site_name || 'Diginix'}. All rights reserved.
+            </p>
+            <p className="text-xs text-cafe-textMuted text-center max-w-2xl">
+              Not endorsed by or affiliated with the copyright holders. All trademarks remain the property of their respective owners.
             </p>
           </div>
         </div>

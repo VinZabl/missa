@@ -1,9 +1,7 @@
 import React from 'react';
-import { MenuItem, CartItem } from '../types';
+import { MenuItem, CartItem, Member } from '../types';
 import { useCategories } from '../hooks/useCategories';
 import MenuItemCard from './MenuItemCard';
-import { useOrders } from '../hooks/useOrders';
-import OrderStatusModal from './OrderStatusModal';
 
 // Preload images for better performance
 const preloadImages = (items: MenuItem[]) => {
@@ -23,27 +21,12 @@ interface MenuProps {
   selectedCategory: string;
   searchQuery?: string;
   onItemAdded?: () => void; // Callback when item is added from modal
+  currentMember?: Member | null; // Current logged-in member
 }
 
-const Menu: React.FC<MenuProps> = ({ menuItems, addToCart, cartItems, updateQuantity, selectedCategory, searchQuery = '', onItemAdded }) => {
+const Menu: React.FC<MenuProps> = ({ menuItems, addToCart, cartItems, updateQuantity, selectedCategory, searchQuery = '', onItemAdded, currentMember }) => {
   const { categories } = useCategories();
-  const { fetchOrderById } = useOrders();
   const [activeCategory, setActiveCategory] = React.useState(selectedCategory === 'popular' ? 'popular' : 'hot-coffee');
-  const [processingOrderId, setProcessingOrderId] = React.useState<string | null>(null);
-  const [isOrderModalOpen, setIsOrderModalOpen] = React.useState(false);
-
-  // Handle modal close - clear approved/rejected orders from banner and localStorage
-  const handleModalClose = React.useCallback(async () => {
-    setIsOrderModalOpen(false);
-    // Check if order is approved or rejected, if so clear it from localStorage and banner
-    if (processingOrderId) {
-      const order = await fetchOrderById(processingOrderId);
-      if (order && (order.status === 'approved' || order.status === 'rejected')) {
-        localStorage.removeItem('current_order_id');
-        setProcessingOrderId(null);
-      }
-    }
-  }, [processingOrderId, fetchOrderById]);
 
   // Preload images when menu items change
   React.useEffect(() => {
@@ -107,32 +90,6 @@ const Menu: React.FC<MenuProps> = ({ menuItems, addToCart, cartItems, updateQuan
     }
   }, [categories, activeCategory, selectedCategory]);
 
-  // Check for processing order on mount and when component becomes visible
-  React.useEffect(() => {
-    const checkProcessingOrder = async () => {
-      const storedOrderId = localStorage.getItem('current_order_id');
-      if (storedOrderId) {
-        const order = await fetchOrderById(storedOrderId);
-        if (order && (order.status === 'pending' || order.status === 'processing' || order.status === 'approved' || order.status === 'rejected')) {
-          // Show banner for all order statuses (pending, processing, approved, rejected)
-          // Banner will be cleared when user closes the modal
-          setProcessingOrderId(storedOrderId);
-        } else {
-          // Order not found, clear it
-          localStorage.removeItem('current_order_id');
-          setProcessingOrderId(null);
-        }
-      } else {
-        setProcessingOrderId(null);
-      }
-    };
-
-    checkProcessingOrder();
-    // Poll every 5 seconds to check order status
-    const interval = setInterval(checkProcessingOrder, 5000);
-    return () => clearInterval(interval);
-  }, [fetchOrderById]);
-
   React.useEffect(() => {
     // Only handle scroll if not showing popular category
     if (selectedCategory === 'popular') {
@@ -179,7 +136,7 @@ const Menu: React.FC<MenuProps> = ({ menuItems, addToCart, cartItems, updateQuan
       
       return (
         <MenuItemCard
-          key={item.id}
+          key={`${item.id}-${currentMember?.id || 'guest'}-${currentMember?.user_type || 'none'}`}
           item={item}
           onAddToCart={addToCart}
           quantity={quantity}
@@ -200,107 +157,36 @@ const Menu: React.FC<MenuProps> = ({ menuItems, addToCart, cartItems, updateQuan
     });
   };
 
-  // Order Status Banner Component
-  const OrderStatusBanner = () => {
-    if (!processingOrderId) return null;
-    
-    // Determine banner text based on order status
-    const [bannerText, setBannerText] = React.useState('Your order is being processed');
-    
-    React.useEffect(() => {
-      const fetchOrderStatus = async () => {
-        if (processingOrderId) {
-          const order = await fetchOrderById(processingOrderId);
-          if (order) {
-            if (order.status === 'approved') {
-              setBannerText('Your order has been accepted');
-            } else if (order.status === 'rejected') {
-              setBannerText('Your order was rejected');
-            } else {
-              setBannerText('Your order is being processed');
-            }
-          }
-        }
-      };
-      fetchOrderStatus();
-    }, [processingOrderId, fetchOrderById]);
-    
-    return (
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4">
-        <div className="rounded-xl mb-4 flex items-stretch overflow-hidden" style={{ border: '1px solid rgba(0, 206, 209, 0.3)' }}>
-          {/* Left Section - Information Area */}
-          <div className="flex-1 p-3 sm:p-4 flex items-center glass-strong rounded-l-xl">
-            <p className="font-semibold text-cafe-primary text-sm sm:text-base whitespace-nowrap">{bannerText}</p>
-          </div>
-          {/* Right Section - Action Button */}
-          <button
-            onClick={() => setIsOrderModalOpen(true)}
-            className="px-4 sm:px-6 py-3 sm:py-4 text-white font-semibold hover:opacity-90 transition-all duration-200 flex items-center justify-center whitespace-nowrap rounded-r-xl"
-            style={{ backgroundColor: '#00CED1' }}
-          >
-            View
-          </button>
-        </div>
-      </div>
-    );
-  };
-
   // If there's a search query, show search results
   if (searchQuery.trim() !== '') {
     if (menuItems.length === 0) {
       return (
-        <>
-          <OrderStatusBanner />
-          <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 md:py-6">
-            <section className="mb-6 md:mb-8">
-              <div className="flex items-center mb-3 md:mb-4">
-                <h3 className="text-3xl font-medium text-cafe-text">Search Results</h3>
-              </div>
-              <p className="text-gray-500">No games found matching "{searchQuery}"</p>
-            </section>
-          </main>
-          <OrderStatusModal
-            orderId={processingOrderId}
-            isOpen={isOrderModalOpen}
-            onClose={handleModalClose}
-            onSucceededClose={() => {
-              localStorage.removeItem('current_order_id');
-              setProcessingOrderId(null);
-              setIsOrderModalOpen(false);
-            }}
-          />
-        </>
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 md:pt-10 pb-4 md:pb-6">
+          <section className="mb-6 md:mb-8">
+            <div className="flex items-center mb-3 md:mb-4">
+              <h3 className="text-2xl md:text-5xl font-medium text-cafe-text">Search Results</h3>
+            </div>
+            <p className="text-gray-500">No games found matching "{searchQuery}"</p>
+          </section>
+        </main>
       );
     }
 
     return (
-      <>
-        <OrderStatusBanner />
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-          <section className="mb-16">
-            <div className="flex items-center mb-8">
-              <h3 className="text-3xl font-medium text-cafe-text">
-                Search Results for "{searchQuery}"
-              </h3>
-              <span className="ml-4 text-sm text-gray-500">({menuItems.length} {menuItems.length === 1 ? 'game' : 'games'})</span>
-            </div>
-            
-            <div className="grid grid-cols-3 lg:grid-cols-6 gap-1.5 sm:gap-2 md:gap-2.5">
-              {renderMenuItems(menuItems)}
-            </div>
-          </section>
-        </main>
-        <OrderStatusModal
-          orderId={processingOrderId}
-          isOpen={isOrderModalOpen}
-          onClose={() => setIsOrderModalOpen(false)}
-          onSucceededClose={() => {
-            localStorage.removeItem('current_order_id');
-            setProcessingOrderId(null);
-            setIsOrderModalOpen(false);
-          }}
-        />
-      </>
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 md:pt-10 pb-4 md:pb-6">
+        <section className="mb-16">
+          <div className="flex items-center mb-8">
+            <h3 className="text-2xl md:text-5xl font-medium text-cafe-text">
+              Search Results for "{searchQuery}"
+            </h3>
+            <span className="ml-4 text-sm text-gray-500">({menuItems.length} {menuItems.length === 1 ? 'game' : 'games'})</span>
+          </div>
+          
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 md:gap-4">
+            {renderMenuItems(menuItems)}
+          </div>
+        </section>
+      </main>
     );
   }
 
@@ -310,55 +196,41 @@ const Menu: React.FC<MenuProps> = ({ menuItems, addToCart, cartItems, updateQuan
     // menuItems is already filtered to only popular items from App.tsx
     if (menuItems.length === 0) {
       return (
-        <>
-          <OrderStatusBanner />
-          <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 md:py-6">
-            <section id="popular" className="mb-6 md:mb-8">
-              <div className="flex items-center mb-3 md:mb-4">
-                <h3 className="text-3xl font-medium text-cafe-text">Popular</h3>
-              </div>
-              <p className="text-gray-500">No popular items available at the moment.</p>
-            </section>
-          </main>
-          <OrderStatusModal
-            orderId={processingOrderId}
-            isOpen={isOrderModalOpen}
-            onClose={handleModalClose}
-            onSucceededClose={() => {
-              localStorage.removeItem('current_order_id');
-              setProcessingOrderId(null);
-              setIsOrderModalOpen(false);
-            }}
-          />
-        </>
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 md:pt-10 pb-4 md:pb-6">
+          <section id="popular" className="mb-6 md:mb-8">
+            <div className="flex items-center mb-3 md:mb-4">
+              <h3 className="text-2xl md:text-5xl font-medium text-cafe-text">Popular</h3>
+            </div>
+            <p className="text-gray-500">No popular items available at the moment.</p>
+          </section>
+        </main>
       );
     }
 
     return (
-      <>
-        <OrderStatusBanner />
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 md:py-6">
-          <section id="popular" className="mb-6 md:mb-8">
-            <div className="flex items-center mb-3 md:mb-4">
-              <h3 className="text-3xl font-medium text-cafe-text">Popular</h3>
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 md:pt-8 pb-4 md:pb-6">
+        {/* Welcome back card - Mobile only */}
+        {currentMember && (
+          <div className="mb-6 md:hidden flex justify-center">
+            <div className="glass-card rounded-lg px-3 py-2 inline-block">
+              <div className="flex items-center justify-center">
+                <p className="text-sm text-cafe-text">
+                  <span className="text-cafe-textMuted">Welcome back,</span> <span className="font-semibold ml-2">{currentMember.username}</span>
+                </p>
+              </div>
             </div>
-            
-            <div className="grid grid-cols-3 lg:grid-cols-6 gap-1.5 sm:gap-2 md:gap-2.5">
-              {renderMenuItems(menuItems)}
-            </div>
-          </section>
-        </main>
-        <OrderStatusModal
-          orderId={processingOrderId}
-          isOpen={isOrderModalOpen}
-          onClose={() => setIsOrderModalOpen(false)}
-          onSucceededClose={() => {
-            localStorage.removeItem('current_order_id');
-            setProcessingOrderId(null);
-            setIsOrderModalOpen(false);
-          }}
-        />
-      </>
+          </div>
+        )}
+        <section id="popular" className="mb-6 md:mb-8">
+          <div className="flex items-center mb-3 md:mb-4">
+            <h3 className="text-2xl md:text-5xl font-medium text-cafe-text">Popular</h3>
+          </div>
+          
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 md:gap-4">
+            {renderMenuItems(menuItems)}
+          </div>
+        </section>
+      </main>
     );
   }
 
@@ -369,16 +241,29 @@ const Menu: React.FC<MenuProps> = ({ menuItems, addToCart, cartItems, updateQuan
 
   return (
     <>
-      <OrderStatusBanner />
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4 md:pt-6 pb-4 md:pb-6">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 md:pt-8 pb-4 md:pb-6">
+        {/* Welcome message for logged-in members */}
+        {/* Welcome back card - Mobile only */}
+        {currentMember && (
+          <div className="mb-6 md:hidden flex justify-center">
+            <div className="glass-card rounded-lg px-3 py-2 inline-block">
+              <div className="flex items-center justify-center">
+                <p className="text-sm text-cafe-text">
+                  <span className="text-cafe-textMuted">Welcome back,</span> <span className="font-semibold ml-2">{currentMember.username}</span>
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+        
         {/* Show Popular section when viewing "All" */}
         {showPopularSection && (
           <section id="popular" className="mb-8 md:mb-12">
             <div className="flex items-center mb-3 md:mb-4">
-              <h3 className="text-3xl font-medium text-cafe-text">Popular</h3>
+              <h3 className="text-2xl md:text-5xl font-medium text-cafe-text">Popular</h3>
             </div>
             
-            <div className="grid grid-cols-3 lg:grid-cols-6 gap-1.5 sm:gap-2 md:gap-2.5">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 md:gap-4">
               {renderMenuItems(popularItems)}
             </div>
           </section>
@@ -393,28 +278,16 @@ const Menu: React.FC<MenuProps> = ({ menuItems, addToCart, cartItems, updateQuan
           return (
             <section key={category.id} id={category.id} className="mb-8 md:mb-12">
               <div className="flex items-center mb-3 md:mb-4">
-                <h3 className="text-3xl font-medium text-cafe-text">{category.name}</h3>
+                <h3 className="text-2xl md:text-5xl font-medium text-cafe-text font-anton italic">{category.name}</h3>
               </div>
               
-              <div className="grid grid-cols-3 lg:grid-cols-6 gap-1.5 sm:gap-2 md:gap-2.5">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 md:gap-4">
                 {renderMenuItems(categoryItems)}
               </div>
             </section>
           );
         })}
       </main>
-
-      {/* Order Status Modal */}
-      <OrderStatusModal
-        orderId={processingOrderId}
-        isOpen={isOrderModalOpen}
-        onClose={() => setIsOrderModalOpen(false)}
-        onSucceededClose={() => {
-          localStorage.removeItem('current_order_id');
-          setProcessingOrderId(null);
-          setIsOrderModalOpen(false);
-        }}
-      />
     </>
   );
 };

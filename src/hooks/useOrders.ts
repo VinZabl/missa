@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { Order, CreateOrderData, OrderStatus } from '../types';
 
@@ -7,44 +7,51 @@ export const useOrders = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchOrders = useCallback(async (showLoading = true) => {
+  // Fetch all orders (optimized - only fetch essential fields, limit to recent orders)
+  const fetchOrders = async (limit: number = 100, since?: string) => {
     try {
-      if (showLoading) {
-        setLoading(true);
-      }
-      const { data, error: fetchError } = await supabase
+      setLoading(true);
+      let query = supabase
         .from('orders')
-        .select('*')
-        .order('created_at', { ascending: false });
+        .select('id, invoice_number, status, total_price, payment_method_id, created_at, updated_at, member_id, order_option, order_items, customer_info, receipt_url')
+        .order('created_at', { ascending: false })
+        .limit(limit);
+
+      // If since is provided, only fetch orders newer than that
+      if (since) {
+        query = query.gt('created_at', since);
+      }
+
+      const { data, error: fetchError } = await query;
 
       if (fetchError) throw fetchError;
 
-      // Transform the data to match Order interface
-      const transformedOrders: Order[] = (data || []).map((order: any) => ({
-        id: order.id,
-        order_items: order.order_items || [],
-        customer_info: order.customer_info || {},
-        payment_method_id: order.payment_method_id || '',
-        receipt_url: order.receipt_url || '',
-        total_price: order.total_price || 0,
-        status: order.status as OrderStatus,
-        created_at: order.created_at,
-        updated_at: order.updated_at || order.created_at,
-      }));
-
-      setOrders(transformedOrders);
+      if (since && data && data.length > 0) {
+        // Append new orders to the beginning, keep only the most recent 100
+        setOrders(prev => {
+          const combined = [...(data as Order[]), ...prev];
+          // Remove duplicates by id
+          const unique = combined.filter((order, index, self) => 
+            index === self.findIndex(o => o.id === order.id)
+          );
+          // Keep only the most recent 100
+          return unique.slice(0, limit);
+        });
+      } else {
+        // Initial fetch or full refresh
+        setOrders((data || []) as Order[]);
+      }
       setError(null);
     } catch (err) {
-      console.error('Error fetching orders:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch orders');
+      console.error('Error fetching orders:', err);
     } finally {
-      if (showLoading) {
-        setLoading(false);
-      }
+      setLoading(false);
     }
-  }, []);
+  };
 
-  const fetchOrderById = useCallback(async (orderId: string): Promise<Order | null> => {
+  // Fetch a single order by ID
+  const fetchOrderById = async (orderId: string): Promise<Order | null> => {
     try {
       const { data, error: fetchError } = await supabase
         .from('orders')
@@ -53,28 +60,18 @@ export const useOrders = () => {
         .single();
 
       if (fetchError) throw fetchError;
-      if (!data) return null;
 
-      return {
-        id: data.id,
-        order_items: data.order_items || [],
-        customer_info: data.customer_info || {},
-        payment_method_id: data.payment_method_id || '',
-        receipt_url: data.receipt_url || '',
-        total_price: data.total_price || 0,
-        status: data.status as OrderStatus,
-        created_at: data.created_at,
-        updated_at: data.updated_at || data.created_at,
-      };
+      return data;
     } catch (err) {
       console.error('Error fetching order:', err);
       return null;
     }
-  }, []);
+  };
 
-  const createOrder = useCallback(async (orderData: CreateOrderData): Promise<Order | null> => {
+  // Create a new order
+  const createOrder = async (orderData: CreateOrderData): Promise<Order | null> => {
     try {
-      const { data, error: insertError } = await supabase
+      const { data, error: createError } = await supabase
         .from('orders')
         .insert({
           order_items: orderData.order_items,
@@ -82,35 +79,38 @@ export const useOrders = () => {
           payment_method_id: orderData.payment_method_id,
           receipt_url: orderData.receipt_url,
           total_price: orderData.total_price,
+          member_id: orderData.member_id || null,
+          order_option: orderData.order_option || 'place_order',
+          invoice_number: orderData.invoice_number || null,
           status: 'pending',
         })
         .select()
         .single();
 
-      if (insertError) throw insertError;
+      if (createError) throw createError;
 
-      const newOrder: Order = {
-        id: data.id,
-        order_items: data.order_items || [],
-        customer_info: data.customer_info || {},
-        payment_method_id: data.payment_method_id || '',
-        receipt_url: data.receipt_url || '',
-        total_price: data.total_price || 0,
-        status: data.status as OrderStatus,
-        created_at: data.created_at,
-        updated_at: data.updated_at || data.created_at,
-      };
+      // Add new order to the list if we're in admin view
+      if (orders.length > 0 && data) {
+        setOrders(prev => {
+          const updated = [data as Order, ...prev];
+          // Keep only the most recent 100
+          return updated.slice(0, 100);
+        });
+      } else if (orders.length === 0) {
+        // If no orders loaded, fetch initial set
+        await fetchOrders(100);
+      }
 
-      // Refresh orders list
-      await fetchOrders(false);
-      return newOrder;
+      return data;
     } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create order');
       console.error('Error creating order:', err);
-      throw err;
+      return null;
     }
-  }, [fetchOrders]);
+  };
 
-  const updateOrderStatus = useCallback(async (orderId: string, status: OrderStatus): Promise<boolean> => {
+  // Update order status
+  const updateOrderStatus = async (orderId: string, status: OrderStatus): Promise<boolean> => {
     try {
       const { error: updateError } = await supabase
         .from('orders')
@@ -119,91 +119,68 @@ export const useOrders = () => {
 
       if (updateError) throw updateError;
 
-      // Refresh orders list
-      await fetchOrders(false);
+      // Update the specific order in the list
+      if (orders.length > 0) {
+        setOrders(prev => prev.map(order => 
+          order.id === orderId ? { ...order, status } : order
+        ));
+      }
+
       return true;
     } catch (err) {
-      console.error('Error updating order status:', err);
+      setError(err instanceof Error ? err.message : 'Failed to update order');
+      console.error('Error updating order:', err);
       return false;
     }
-  }, [fetchOrders]);
+  };
 
-  // Use ref to store the latest fetchOrders function
-  const fetchOrdersRef = useRef(fetchOrders);
+  // Subscribe to order updates (real-time) - only if orders are already loaded
   useEffect(() => {
-    fetchOrdersRef.current = fetchOrders;
-  }, [fetchOrders]);
-
-  useEffect(() => {
-    fetchOrders();
-  }, [fetchOrders]);
-
-  // Set up polling fallback - check for new orders every 5 seconds
-  useEffect(() => {
-    const pollInterval = setInterval(() => {
-      console.log('🔄 Polling for new orders...');
-      fetchOrdersRef.current(false);
-    }, 5000); // Check every 5 seconds
+    if (orders.length === 0) return;
+    
+    const mostRecentOrder = orders[0];
+    const mostRecentDate = mostRecentOrder?.created_at;
+    
+    const channel = supabase
+      .channel('orders-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'orders',
+        },
+        (payload) => {
+          if (payload.eventType === 'INSERT') {
+            // Use the order data from the payload directly (optimized - no extra egress)
+            const newOrder = payload.new as Order;
+            setOrders(prev => {
+              // Check if order already exists (avoid duplicates)
+              if (prev.some(order => order.id === newOrder.id)) {
+                return prev;
+              }
+              // Add new order to the beginning, keep only the most recent 100
+              const updated = [newOrder, ...prev];
+              return updated.slice(0, 100);
+            });
+          } else if (payload.eventType === 'UPDATE') {
+            // Update the specific order in the list using payload data (optimized - no extra egress)
+            const updatedOrder = payload.new as Order;
+            setOrders(prev => prev.map(order => 
+              order.id === updatedOrder.id ? { ...order, ...updatedOrder } : order
+            ));
+          } else if (payload.eventType === 'DELETE') {
+            // Remove deleted order from list
+            setOrders(prev => prev.filter(order => order.id !== payload.old.id));
+          }
+        }
+      )
+      .subscribe();
 
     return () => {
-      clearInterval(pollInterval);
+      supabase.removeChannel(channel);
     };
-  }, []); // Empty dependency array - polling stays active
-
-  // Set up real-time subscription (active regardless of current view)
-  useEffect(() => {
-    let channel: ReturnType<typeof supabase.channel>;
-    let reconnectTimeout: NodeJS.Timeout;
-
-    const setupSubscription = () => {
-      const channelName = `orders_changes_${Date.now()}`;
-      channel = supabase
-        .channel(channelName)
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'orders',
-          },
-          (payload) => {
-            console.log('✅ Real-time order change detected:', payload.eventType, payload.new?.id);
-            // Use ref to call latest fetchOrders function
-            // Reduced delay for faster updates
-            setTimeout(() => {
-              fetchOrdersRef.current(false);
-            }, 100);
-          }
-        )
-        .subscribe((status) => {
-          if (status === 'SUBSCRIBED') {
-            console.log('✅ Successfully subscribed to orders changes (real-time active)');
-          } else if (status === 'CHANNEL_ERROR') {
-            console.error('❌ Error subscribing to orders changes (polling will continue every 5s)');
-            // Retry after 5 seconds
-            reconnectTimeout = setTimeout(setupSubscription, 5000);
-          } else if (status === 'TIMED_OUT') {
-            console.warn('⚠️ Subscription timed out, retrying... (polling will continue every 5s)');
-            reconnectTimeout = setTimeout(setupSubscription, 5000);
-          } else if (status === 'CLOSED') {
-            console.warn('⚠️ Subscription closed, reconnecting... (polling will continue every 5s)');
-            reconnectTimeout = setTimeout(setupSubscription, 5000);
-          }
-        });
-    };
-
-    setupSubscription();
-
-    return () => {
-      if (reconnectTimeout) {
-        clearTimeout(reconnectTimeout);
-      }
-      if (channel) {
-        console.log('Unsubscribing from orders changes');
-        supabase.removeChannel(channel);
-      }
-    };
-  }, []); // Empty dependency array - subscription stays active on all admin views
+  }, [orders.length, orders[0]?.created_at]);
 
   return {
     orders,

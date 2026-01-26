@@ -2,30 +2,28 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Diginix Theme Styles */
+/* In-Game Credits Theme Styles */
 /* Glassmorphism utilities */
 .glass {
-  background: rgba(26, 26, 26, 0.6);
+  background: rgba(255, 255, 255, 0.1);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
-  border: 1px solid rgba(0, 206, 209, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 .glass-strong {
-  background: rgba(26, 26, 26, 0.7);
+  background: rgba(255, 255, 255, 0.15);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(0, 206, 209, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.3);
 }
 
 .glass-card {
-  background: rgba(26, 26, 26, 0.5);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  border: 1.5px solid rgba(0, 206, 209, 0.35);
-  box-shadow: 0 8px 32px 0 rgba(0, 206, 209, 0.25), 
-              0 2px 8px 0 rgba(0, 0, 0, 0.3),
-              inset 0 1px 0 0 rgba(255, 255, 255, 0.1);
+  background: rgba(10, 31, 46, 0.6);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(96, 165, 250, 0.3);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
 }
 
 .glass-hover {
@@ -33,12 +31,9 @@
 }
 
 .glass-hover:hover {
-  background: rgba(26, 26, 26, 0.65);
-  border-color: rgba(0, 206, 209, 0.5);
-  box-shadow: 0 12px 40px 0 rgba(0, 206, 209, 0.35), 
-              0 4px 12px 0 rgba(0, 0, 0, 0.4),
-              inset 0 1px 0 0 rgba(255, 255, 255, 0.15);
-  transform: translateY(-2px);
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(96, 165, 250, 0.5);
+  box-shadow: 0 8px 32px 0 rgba(96, 165, 250, 0.2);
 }
 
 .package-card-hover {
@@ -46,9 +41,9 @@
 }
 
 .package-card-hover:hover {
-  background: #00CED1 !important;
-  border: 2px solid #00CED1 !important;
-  box-shadow: 0 4px 12px 0 rgba(0, 206, 209, 0.4) !important;
+  background: #1565A8 !important;
+  border: 2px solid #1565A8 !important;
+  box-shadow: 0 4px 12px 0 rgba(21, 101, 168, 0.4) !important;
   transform: scale(1.02) !important;
 }
 
@@ -59,29 +54,52 @@
   color: white !important;
 }
 
-/* Glow effects for Diginix theme */
+/* Glow effects for in-game theme */
 .glow-blue {
-  box-shadow: 0 0 20px rgba(0, 206, 209, 0.5);
+  box-shadow: 0 0 20px rgba(96, 165, 250, 0.5);
 }
 
 .glow-blue-strong {
-  box-shadow: 0 0 30px rgba(0, 206, 209, 0.8);
+  box-shadow: 0 0 30px rgba(96, 165, 250, 0.8);
 }
 
 /* Text glow */
 .text-glow {
-  text-shadow: 0 0 10px rgba(0, 206, 209, 0.8);
+  text-shadow: 0 0 10px rgba(96, 165, 250, 0.8);
 }
 
 /* Legacy cafe color helpers (for compatibility) */
-.bg-cafe-cream { background-color: #F5F5F5; }
-.bg-cafe-beige { background-color: #E5E5E5; }
-.bg-cafe-light { background-color: rgba(26, 26, 26, 0.6); }
-.text-cafe-accent { color: #00CED1; }
-.text-cafe-dark { color: #FFFFFF; }
-.border-cafe-accent { border-color: #00CED1; }
-.border-cafe-latte { border-color: rgba(0, 206, 209, 0.3); }
-.ring-cafe-accent { --tw-ring-color: #00CED1; }
+.bg-cafe-cream {
+  background-color: #E0F2FE;
+}
+
+.bg-cafe-beige {
+  background-color: #BAE6FD;
+}
+
+.bg-cafe-light {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.text-cafe-accent {
+  color: #60A5FA;
+}
+
+.text-cafe-dark {
+  color: #E0F2FE;
+}
+
+.border-cafe-accent {
+  border-color: #60A5FA;
+}
+
+.border-cafe-latte {
+  border-color: rgba(96, 165, 250, 0.3);
+}
+
+.ring-cafe-accent {
+  --tw-ring-color: #60A5FA;
+}
 
 /* Hide scrollbar for mobile nav */
 .scrollbar-hide {
@@ -123,6 +141,7 @@ img {
   0% {
     transform: translateX(0);
   }
+
   100% {
     transform: translateX(-50%);
   }
@@ -139,12 +158,15 @@ img {
   0% {
     transform: translate(0px, 0px) scale(1);
   }
+
   33% {
     transform: translate(30px, -50px) scale(1.1);
   }
+
   66% {
     transform: translate(-20px, 20px) scale(0.9);
   }
+
   100% {
     transform: translate(0px, 0px) scale(1);
   }
@@ -162,8 +184,21 @@ img {
   animation-delay: 4s;
 }
 
-/* Search input placeholder color */
-input[type="text"]::placeholder {
-  color: #00CED1;
-  opacity: 0.7;
+/* Background logo with opacity */
+.bg-logo-overlay::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  height: 100%;
+  background-image: url('/logo.png');
+  background-size: contain;
+  background-position: center;
+  background-repeat: no-repeat;
+  opacity: 0.1;
+  pointer-events: none;
+  z-index: 0;
 }

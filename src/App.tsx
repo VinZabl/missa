@@ -7,20 +7,126 @@ import Menu from './components/Menu';
 import Cart from './components/Cart';
 import Checkout from './components/Checkout';
 import FloatingSupportButton from './components/FloatingSupportButton';
-import Footer from './components/Footer';
 import AdminDashboard from './components/AdminDashboard';
+import MemberLogin from './components/MemberLogin';
+import WelcomeModal from './components/WelcomeModal';
+import MemberProfile from './components/MemberProfile';
+import OrderStatusModal from './components/OrderStatusModal';
 import { useMenu } from './hooks/useMenu';
+import { useMemberAuth } from './hooks/useMemberAuth';
+import { useOrders } from './hooks/useOrders';
+import Footer from './components/Footer';
 
 function MainApp() {
   const cart = useCart();
   const { menuItems } = useMenu();
-  const [currentView, setCurrentView] = React.useState<'menu' | 'cart' | 'checkout'>('menu');
-  const [selectedCategory, setSelectedCategory] = React.useState<string>('all');
-  const [searchQuery, setSearchQuery] = React.useState<string>('');
+  const { currentMember, logout, loading: authLoading } = useMemberAuth();
+  const { fetchOrderById } = useOrders();
+  
+  // Load saved state from localStorage on mount
+  const [currentView, setCurrentView] = React.useState<'menu' | 'cart' | 'checkout' | 'member-login'>(() => {
+    const savedView = localStorage.getItem('amber_currentView') as 'menu' | 'cart' | 'checkout' | 'member-login' | null;
+    return savedView || 'menu';
+  });
+  const [selectedCategory, setSelectedCategory] = React.useState<string>(() => {
+    return localStorage.getItem('amber_selectedCategory') || 'all';
+  });
+  const [searchQuery, setSearchQuery] = React.useState<string>(() => {
+    return localStorage.getItem('amber_searchQuery') || '';
+  });
+  const [showWelcomeModal, setShowWelcomeModal] = React.useState(false);
+  const [showMemberProfile, setShowMemberProfile] = React.useState(false);
+  const [justLoggedIn, setJustLoggedIn] = React.useState(false);
+  const [pendingOrderId, setPendingOrderId] = React.useState<string | null>(null);
+  const [showOrderStatusModal, setShowOrderStatusModal] = React.useState(false);
+
+  // Save state to localStorage whenever it changes
+  React.useEffect(() => {
+    localStorage.setItem('amber_currentView', currentView);
+  }, [currentView]);
+
+  React.useEffect(() => {
+    localStorage.setItem('amber_selectedCategory', selectedCategory);
+  }, [selectedCategory]);
+
+  React.useEffect(() => {
+    localStorage.setItem('amber_searchQuery', searchQuery);
+  }, [searchQuery]);
 
   const handleViewChange = (view: 'menu' | 'cart' | 'checkout') => {
+    // Save current scroll position before changing view
+    const scrollPosition = window.pageYOffset || document.documentElement.scrollTop;
+    if (currentView === 'menu') {
+      localStorage.setItem('amber_menuScrollPos', scrollPosition.toString());
+    } else if (currentView === 'cart') {
+      localStorage.setItem('amber_cartScrollPos', scrollPosition.toString());
+    }
     setCurrentView(view);
   };
+
+  // Restore scroll position when view changes
+  React.useEffect(() => {
+    const restoreScroll = () => {
+      if (currentView === 'menu') {
+        const savedScroll = localStorage.getItem('amber_menuScrollPos');
+        if (savedScroll) {
+          setTimeout(() => {
+            window.scrollTo({ top: parseInt(savedScroll), behavior: 'auto' });
+          }, 100);
+        }
+      } else if (currentView === 'cart') {
+        const savedScroll = localStorage.getItem('amber_cartScrollPos');
+        if (savedScroll) {
+          setTimeout(() => {
+            window.scrollTo({ top: parseInt(savedScroll), behavior: 'auto' });
+          }, 100);
+        }
+      }
+    };
+
+    // Only restore scroll if not coming from item added (which should scroll to top)
+    const skipRestore = localStorage.getItem('amber_skipScrollRestore');
+    if (!skipRestore) {
+      restoreScroll();
+    } else {
+      localStorage.removeItem('amber_skipScrollRestore');
+    }
+  }, [currentView]);
+
+  // Save scroll position periodically while on a page
+  React.useEffect(() => {
+    const handleScroll = () => {
+      if (currentView === 'menu') {
+        const scrollPosition = window.pageYOffset || document.documentElement.scrollTop;
+        localStorage.setItem('amber_menuScrollPos', scrollPosition.toString());
+      } else if (currentView === 'cart') {
+        const scrollPosition = window.pageYOffset || document.documentElement.scrollTop;
+        localStorage.setItem('amber_cartScrollPos', scrollPosition.toString());
+      }
+    };
+
+    // Throttle scroll events
+    let ticking = false;
+    const throttledScroll = () => {
+      if (!ticking) {
+        window.requestAnimationFrame(() => {
+          handleScroll();
+          ticking = false;
+        });
+        ticking = true;
+      }
+    };
+
+    window.addEventListener('scroll', throttledScroll, { passive: true });
+    
+    // Also save on page unload/refresh
+    window.addEventListener('beforeunload', handleScroll);
+
+    return () => {
+      window.removeEventListener('scroll', throttledScroll);
+      window.removeEventListener('beforeunload', handleScroll);
+    };
+  }, [currentView]);
 
   const handleCategoryClick = (categoryId: string) => {
     setSelectedCategory(categoryId);
@@ -38,6 +144,8 @@ function MainApp() {
 
   // Handler for when item is added from package selection modal
   const handleItemAdded = React.useCallback(() => {
+    // Mark to skip scroll restore since we want to scroll to top for new items
+    localStorage.setItem('amber_skipScrollRestore', 'true');
     // Redirect to cart view after adding item from modal
     setCurrentView('cart');
   }, []);
@@ -53,6 +161,88 @@ function MainApp() {
       setSelectedCategory('all');
     }
   }, [hasPopularItems, selectedCategory, menuItems.length]);
+
+  // Show welcome modal when member logs in
+  React.useEffect(() => {
+    if (currentMember && justLoggedIn) {
+      setShowWelcomeModal(true);
+      setJustLoggedIn(false);
+    }
+  }, [currentMember, justLoggedIn]);
+
+  // Redirect from login view if member is already logged in
+  React.useEffect(() => {
+    // Wait for auth to finish loading before checking
+    if (!authLoading && currentMember && currentView === 'member-login') {
+      setCurrentView('menu');
+      setJustLoggedIn(true);
+    }
+  }, [currentMember, currentView, authLoading]);
+
+  // Check for pending order with "place_order" option when app loads
+  React.useEffect(() => {
+    const checkPendingOrder = async () => {
+      // Wait for auth to finish loading
+      if (authLoading) return;
+
+      // Check localStorage for pending order ID
+      const storedOrderId = localStorage.getItem('pendingPlaceOrderId');
+      if (!storedOrderId) return;
+
+      try {
+        // Fetch the order to check its status
+        const order = await fetchOrderById(storedOrderId);
+        
+        if (order && order.order_option === 'place_order') {
+          // Only show modal if order is still pending or processing
+          if (order.status === 'pending' || order.status === 'processing') {
+            setPendingOrderId(storedOrderId);
+            setShowOrderStatusModal(true);
+          } else {
+            // Order is completed (approved/rejected), clear localStorage
+            localStorage.removeItem('pendingPlaceOrderId');
+          }
+        } else {
+          // Order doesn't exist or is not place_order option, clear localStorage
+          localStorage.removeItem('pendingPlaceOrderId');
+        }
+      } catch (error) {
+        console.error('Error checking pending order:', error);
+        // Clear localStorage on error
+        localStorage.removeItem('pendingPlaceOrderId');
+      }
+    };
+
+    checkPendingOrder();
+  }, [authLoading, fetchOrderById]);
+
+
+  const handleMemberClick = () => {
+    if (currentMember) {
+      // If already logged in, show member profile
+      setShowMemberProfile(true);
+    } else {
+      setCurrentView('member-login');
+    }
+  };
+
+  const handleGetStarted = () => {
+    // Show profile after Get Started is clicked
+    setShowMemberProfile(true);
+  };
+
+  const handleLogout = () => {
+    logout();
+    setShowMemberProfile(false);
+    setShowWelcomeModal(false);
+  };
+
+  const handleLoginSuccess = () => {
+    // Force view change immediately
+    setCurrentView('menu');
+    // Set justLoggedIn to trigger welcome modal
+    setJustLoggedIn(true);
+  };
 
   // Filter menu items based on selected category and search query
   const filteredMenuItems = React.useMemo(() => {
@@ -77,24 +267,16 @@ function MainApp() {
   }, [menuItems, selectedCategory, searchQuery]);
 
   return (
-    <div className="min-h-screen relative" style={{ backgroundColor: '#0A0A0A' }}>
-      {/* Background logo with 20% opacity - appears on all customer pages */}
-      <div 
-        className="fixed inset-0 flex items-center justify-center pointer-events-none z-0"
-        style={{
-          backgroundImage: 'url(/logo.png)',
-          backgroundSize: 'contain',
-          backgroundRepeat: 'no-repeat',
-          backgroundPosition: 'center',
-          opacity: 0.1
-        }}
-      />
-      
-      <Header 
-        cartItemsCount={cart.getTotalItems()}
-        onCartClick={() => handleViewChange('cart')}
-        onMenuClick={() => handleViewChange('menu')}
-      />
+    <div className="min-h-screen bg-cafe-darkBg bg-logo-overlay">
+      {currentView !== 'member-login' && (
+        <Header 
+          cartItemsCount={cart.getTotalItems()}
+          onCartClick={() => handleViewChange('cart')}
+          onMenuClick={() => handleViewChange('menu')}
+          onMemberClick={handleMemberClick}
+          currentMember={currentMember}
+        />
+      )}
       {currentView === 'menu' && (
         <SubNav 
           selectedCategory={selectedCategory} 
@@ -102,6 +284,7 @@ function MainApp() {
           searchQuery={searchQuery}
           onSearchChange={handleSearchChange}
           hasPopularItems={hasPopularItems}
+          currentMember={currentMember}
         />
       )}
       
@@ -113,6 +296,7 @@ function MainApp() {
           updateQuantity={cart.updateQuantity}
           selectedCategory={selectedCategory}
           searchQuery={searchQuery}
+          currentMember={currentMember}
           onItemAdded={handleItemAdded}
         />
       )}
@@ -140,9 +324,50 @@ function MainApp() {
           }}
         />
       )}
+
+      {currentView === 'member-login' && (
+        <MemberLogin 
+          onBack={() => handleViewChange('menu')}
+          onLoginSuccess={handleLoginSuccess}
+        />
+      )}
       
-      <FloatingSupportButton />
-      <Footer />
+      {showWelcomeModal && currentMember && (
+        <WelcomeModal 
+          username={currentMember.username}
+          onClose={() => setShowWelcomeModal(false)}
+          onGetStarted={handleGetStarted}
+        />
+      )}
+      {showMemberProfile && currentMember && (
+        <MemberProfile
+          onClose={() => setShowMemberProfile(false)}
+          onLogout={handleLogout}
+        />
+      )}
+
+      {/* Order Status Modal for pending "place_order" orders */}
+      <OrderStatusModal
+        orderId={pendingOrderId}
+        isOpen={showOrderStatusModal}
+        onClose={() => {
+          setShowOrderStatusModal(false);
+          // Don't clear localStorage here - let it clear when order is completed
+        }}
+        onSucceededClose={() => {
+          // Order is approved/rejected, clear localStorage and close modal
+          localStorage.removeItem('pendingPlaceOrderId');
+          setShowOrderStatusModal(false);
+          setPendingOrderId(null);
+        }}
+      />
+      
+      {currentView !== 'member-login' && (
+        <>
+          <FloatingSupportButton />
+          <Footer />
+        </>
+      )}
     </div>
   );
 }
@@ -153,6 +378,7 @@ function App() {
       <Routes>
         <Route path="/" element={<MainApp />} />
         <Route path="/admin" element={<AdminDashboard />} />
+        <Route path="/member/login" element={<MainApp />} />
       </Routes>
     </Router>
   );

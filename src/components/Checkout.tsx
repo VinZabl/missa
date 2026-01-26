@@ -1,10 +1,12 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { ArrowLeft, Upload, X, Copy, Check, Download, Eye } from 'lucide-react';
-import { CartItem, PaymentMethod, CustomField, OrderStatus } from '../types';
-import { usePaymentMethods } from '../hooks/usePaymentMethods';
+import React, { useState, useMemo, useRef } from 'react';
+import { ArrowLeft, Upload, X, Copy, Check, MousePointerClick, Download } from 'lucide-react';
+import { CartItem, CustomField } from '../types';
+import { usePaymentMethods, PaymentMethod } from '../hooks/usePaymentMethods';
 import { useImageUpload } from '../hooks/useImageUpload';
 import { useOrders } from '../hooks/useOrders';
 import { useSiteSettings } from '../hooks/useSiteSettings';
+import { useMemberAuth } from '../hooks/useMemberAuth';
+import { supabase } from '../lib/supabase';
 import OrderStatusModal from './OrderStatusModal';
 
 interface CheckoutProps {
@@ -17,30 +19,139 @@ interface CheckoutProps {
 const Checkout: React.FC<CheckoutProps> = ({ cartItems, totalPrice, onBack, onNavigateToMenu }) => {
   const { paymentMethods } = usePaymentMethods();
   const { uploadImage, uploading: uploadingReceipt } = useImageUpload();
-  const { createOrder, fetchOrderById } = useOrders();
+  const { createOrder } = useOrders();
   const { siteSettings } = useSiteSettings();
+  const { currentMember } = useMemberAuth();
   const orderOption = siteSettings?.order_option || 'order_via_messenger';
-  const [step, setStep] = useState<'details' | 'payment' | 'order'>('details');
+  
+  // Load saved state from localStorage
+  const [paymentMethodId, setPaymentMethodId] = useState<string | null>(() => {
+    return localStorage.getItem('amber_checkout_paymentMethodId');
+  });
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | null>(null);
   const paymentDetailsRef = useRef<HTMLDivElement>(null);
   const buttonsRef = useRef<HTMLDivElement>(null);
-  const [, setShowScrollIndicator] = useState(true);
-  const [customFieldValues, setCustomFieldValues] = useState<Record<string, string>>({});
+  const [showScrollIndicator, setShowScrollIndicator] = useState(true);
+  const [customFieldValues, setCustomFieldValues] = useState<Record<string, string>>(() => {
+    try {
+      const saved = localStorage.getItem('amber_checkout_customFieldValues');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
-  const [receiptImageUrl, setReceiptImageUrl] = useState<string | null>(null);
-  const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
+  const [receiptImageUrl, setReceiptImageUrl] = useState<string | null>(() => {
+    return localStorage.getItem('amber_checkout_receiptImageUrl');
+  });
+  const [receiptPreview, setReceiptPreview] = useState<string | null>(() => {
+    return localStorage.getItem('amber_checkout_receiptPreview');
+  });
   const [receiptError, setReceiptError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [hasCopiedMessage, setHasCopiedMessage] = useState(false);
   const [copiedAccountNumber, setCopiedAccountNumber] = useState(false);
   const [copiedAccountName, setCopiedAccountName] = useState(false);
-  const [bulkInputValues, setBulkInputValues] = useState<Record<string, string>>({});
-  const [bulkSelectedGames, setBulkSelectedGames] = useState<string[]>([]);
+  const [bulkInputValues, setBulkInputValues] = useState<Record<string, string>>(() => {
+    try {
+      const saved = localStorage.getItem('amber_checkout_bulkInputValues');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+  const [bulkSelectedGames, setBulkSelectedGames] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('amber_checkout_bulkSelectedGames');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [useMultipleAccounts, setUseMultipleAccounts] = useState(() => {
+    return localStorage.getItem('amber_checkout_useMultipleAccounts') === 'true';
+  });
+
+  // Restore payment method from saved ID
+  React.useEffect(() => {
+    if (paymentMethodId && paymentMethods.length > 0) {
+      const savedMethod = paymentMethods.find(m => m.id === paymentMethodId);
+      if (savedMethod) {
+        // Check if payment method is still available based on order total
+        if (savedMethod.max_order_amount !== null && savedMethod.max_order_amount !== undefined) {
+          if (totalPrice >= savedMethod.max_order_amount) {
+            // Payment method is hidden due to order total, clear selection
+            setPaymentMethod(null);
+            setPaymentMethodId(null);
+            localStorage.removeItem('amber_checkout_paymentMethodId');
+            return;
+          }
+        }
+        setPaymentMethod(savedMethod);
+      }
+    }
+  }, [paymentMethodId, paymentMethods, totalPrice]);
+
+  // Update paymentMethodId when paymentMethod changes
+  React.useEffect(() => {
+    if (paymentMethod) {
+      setPaymentMethodId(paymentMethod.id);
+      localStorage.setItem('amber_checkout_paymentMethodId', paymentMethod.id);
+    } else {
+      setPaymentMethodId(null);
+      localStorage.removeItem('amber_checkout_paymentMethodId');
+    }
+  }, [paymentMethod]);
+
+  // Clear selected payment method if it becomes unavailable due to order total
+  React.useEffect(() => {
+    if (paymentMethod && paymentMethod.max_order_amount !== null && paymentMethod.max_order_amount !== undefined) {
+      if (totalPrice >= paymentMethod.max_order_amount) {
+        setPaymentMethod(null);
+        setPaymentMethodId(null);
+        localStorage.removeItem('amber_checkout_paymentMethodId');
+      }
+    }
+  }, [totalPrice, paymentMethod]);
+
+  // Save state to localStorage whenever it changes
+  React.useEffect(() => {
+    localStorage.setItem('amber_checkout_customFieldValues', JSON.stringify(customFieldValues));
+  }, [customFieldValues]);
+
+  React.useEffect(() => {
+    if (receiptImageUrl) {
+      localStorage.setItem('amber_checkout_receiptImageUrl', receiptImageUrl);
+    } else {
+      localStorage.removeItem('amber_checkout_receiptImageUrl');
+    }
+  }, [receiptImageUrl]);
+
+  React.useEffect(() => {
+    if (receiptPreview) {
+      localStorage.setItem('amber_checkout_receiptPreview', receiptPreview);
+    } else {
+      localStorage.removeItem('amber_checkout_receiptPreview');
+    }
+  }, [receiptPreview]);
+
+  React.useEffect(() => {
+    localStorage.setItem('amber_checkout_bulkInputValues', JSON.stringify(bulkInputValues));
+  }, [bulkInputValues]);
+
+  React.useEffect(() => {
+    localStorage.setItem('amber_checkout_bulkSelectedGames', JSON.stringify(bulkSelectedGames));
+  }, [bulkSelectedGames]);
+
+  React.useEffect(() => {
+    localStorage.setItem('amber_checkout_useMultipleAccounts', useMultipleAccounts.toString());
+  }, [useMultipleAccounts]);
   const [orderId, setOrderId] = useState<string | null>(null);
   const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
-  const [existingOrderStatus, setExistingOrderStatus] = useState<OrderStatus | null>(null);
-  const [, setIsCheckingExistingOrder] = useState(true);
+  const [generatedInvoiceNumber, setGeneratedInvoiceNumber] = useState<string | null>(null);
+  const [invoiceNumberDate, setInvoiceNumberDate] = useState<string | null>(null);
+  const [showPaymentDetailsModal, setShowPaymentDetailsModal] = useState(false);
 
   // Extract original menu item ID from cart item ID (format: "menuItemId:::CART:::timestamp-random")
   // This allows us to group all packages from the same game together
@@ -67,6 +178,83 @@ const Checkout: React.FC<CheckoutProps> = ({ cartItems, totalPrice, onBack, onNa
   }, [cartItems]);
 
   const hasAnyCustomFields = itemsWithCustomFields.length > 0;
+
+  // Detect if we can use multiple accounts (same game with different packages)
+  const canUseMultipleAccounts = useMemo(() => {
+    if (!hasAnyCustomFields) return false;
+    
+    // Group cart items by original menu item ID (game)
+    const itemsByGame = new Map<string, typeof cartItems>();
+    cartItems.forEach(item => {
+      const originalId = getOriginalMenuItemId(item.id);
+      if (!itemsByGame.has(originalId)) {
+        itemsByGame.set(originalId, []);
+      }
+      itemsByGame.get(originalId)!.push(item);
+    });
+    
+    // Check if any game has multiple different packages/variations
+    for (const [gameId, items] of itemsByGame.entries()) {
+      if (items.length > 1) {
+        // Check if they have different variations
+        const variationIds = new Set(items.map(item => item.selectedVariation?.id || 'none'));
+        if (variationIds.size > 1) {
+          return true;
+        }
+      }
+    }
+    
+    return false;
+  }, [cartItems, hasAnyCustomFields]);
+
+  // Get items grouped by game and variation for multiple accounts
+  const itemsByGameAndVariation = useMemo(() => {
+    if (!canUseMultipleAccounts) return [];
+    
+    const grouped = new Map<string, Map<string, typeof cartItems[0][]>>();
+    
+    cartItems.forEach(item => {
+      const originalId = getOriginalMenuItemId(item.id);
+      const variationId = item.selectedVariation?.id || 'none';
+      
+      if (!grouped.has(originalId)) {
+        grouped.set(originalId, new Map());
+      }
+      const gameGroup = grouped.get(originalId)!;
+      
+      if (!gameGroup.has(variationId)) {
+        gameGroup.set(variationId, []);
+      }
+      gameGroup.get(variationId)!.push(item);
+    });
+    
+    // Convert to array format
+    const result: Array<{
+      gameId: string;
+      gameName: string;
+      variationId: string;
+      variationName: string;
+      items: typeof cartItems[0][];
+    }> = [];
+    
+    grouped.forEach((variations, gameId) => {
+      const firstItem = Array.from(variations.values())[0][0];
+      const gameName = firstItem.name;
+      
+      variations.forEach((items, variationId) => {
+        const variationName = items[0].selectedVariation?.name || 'Default';
+        result.push({
+          gameId,
+          gameName,
+          variationId,
+          variationName,
+          items
+        });
+      });
+    });
+    
+    return result;
+  }, [cartItems, canUseMultipleAccounts]);
 
   // Get bulk input fields based on selected games - position-based
   // If selected games have N fields, show N bulk input fields
@@ -115,17 +303,12 @@ const Checkout: React.FC<CheckoutProps> = ({ cartItems, totalPrice, onBack, onNa
       const fieldIndex = parseInt(fieldIndexStr, 10);
       
       // Apply to all selected games at the same field position
-      selectedItems.forEach((item) => {
+      selectedItems.forEach(item => {
         if (item.customFields && item.customFields[fieldIndex]) {
           const field = item.customFields[fieldIndex];
           const originalId = getOriginalMenuItemId(item.id);
-          // Find the actual itemIndex from itemsWithCustomFields
-          const actualItemIndex = itemsWithCustomFields.findIndex(i => getOriginalMenuItemId(i.id) === originalId);
-          if (actualItemIndex !== -1) {
-            // Use fieldIndex to ensure uniqueness even if field.key is duplicated
-            const valueKey = `${originalId}_${fieldIndex}_${field.key}`;
-            updates[valueKey] = value;
-          }
+          const valueKey = `${originalId}_${field.key}`;
+          updates[valueKey] = value;
         }
       });
     });
@@ -137,18 +320,12 @@ const Checkout: React.FC<CheckoutProps> = ({ cartItems, totalPrice, onBack, onNa
 
   React.useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
-  }, [step]);
+  }, []);
 
-  // Auto-scroll to payment details when payment method is selected
+  // Show payment details modal when payment method is selected
   React.useEffect(() => {
-    if (paymentMethod && paymentDetailsRef.current) {
-      setShowScrollIndicator(true); // Reset to show indicator when payment method is selected
-      setTimeout(() => {
-        paymentDetailsRef.current?.scrollIntoView({ 
-          behavior: 'smooth', 
-          block: 'start' 
-        });
-      }, 100);
+    if (paymentMethod) {
+      setShowPaymentDetailsModal(true);
     }
   }, [paymentMethod]);
 
@@ -178,9 +355,9 @@ const Checkout: React.FC<CheckoutProps> = ({ cartItems, totalPrice, onBack, onNa
     return () => {
       observer.disconnect();
     };
-  }, [step]);
+  }, []);
 
-  const selectedPaymentMethod = paymentMethods.find(method => method.id === paymentMethod);
+  const selectedPaymentMethod = paymentMethod;
   
   const handleBulkInputChange = (fieldKey: string, value: string) => {
     setBulkInputValues(prev => ({ ...prev, [fieldKey]: value }));
@@ -196,17 +373,6 @@ const Checkout: React.FC<CheckoutProps> = ({ cartItems, totalPrice, onBack, onNa
     }
   };
 
-  const handleProceedToPayment = () => {
-    setStep('payment');
-  };
-
-  const handleProceedToOrder = () => {
-    if (!paymentMethod) {
-      setReceiptError('Please select a payment method');
-      return;
-    }
-    setStep('order');
-  };
 
   const handleReceiptUpload = async (file: File) => {
     try {
@@ -237,107 +403,778 @@ const Checkout: React.FC<CheckoutProps> = ({ cartItems, totalPrice, onBack, onNa
     setReceiptPreview(null);
     setReceiptError(null);
     setHasCopiedMessage(false); // Reset copy state when receipt is removed
+    setGeneratedInvoiceNumber(null); // Reset invoice number when receipt is removed
+    setInvoiceNumberDate(null);
+  };
+
+  // Helper function to get current date in Philippine timezone (Asia/Manila, UTC+8)
+  const getPhilippineDate = () => {
+    const now = new Date();
+    // Convert to Philippine time (UTC+8)
+    const philippineTime = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Manila" }));
+    // Get date components
+    const year = philippineTime.getFullYear();
+    const month = String(philippineTime.getMonth() + 1).padStart(2, '0');
+    const day = String(philippineTime.getDate()).padStart(2, '0');
+    return {
+      dateString: `${year}-${month}-${day}`, // YYYY-MM-DD
+      dayOfMonth: philippineTime.getDate()
+    };
+  };
+
+  // Generate invoice number (format: {orderNumber}M{day}D{orderNumber})
+  // Example: 1M17D1 = 1st order on the 17th day of the month
+  //          1M17D2 = 2nd order on the 17th day of the month
+  // Resets daily at 12:00 AM Philippine time (Asia/Manila, UTC+8)
+  // The invoice number increments each time "Copy Order Message" is clicked (forceNew = true)
+  // Subsequent calls (like "Order via Messenger") will reuse the same invoice number (forceNew = false)
+  // Uses database (site_settings) to track invoice count with proper locking to prevent race conditions
+  const generateInvoiceNumber = async (forceNew: boolean = false): Promise<string> => {
+    const { dateString: todayStr, dayOfMonth } = getPhilippineDate();
+    
+    // Check if we already generated an invoice number for today and forceNew is false
+    // If forceNew is false, reuse the existing number from state
+    if (!forceNew && generatedInvoiceNumber && invoiceNumberDate === todayStr) {
+      return generatedInvoiceNumber;
+    }
+
+    try {
+      // Get invoice count from database (site_settings table)
+      const countSettingId = 'invoice_count';
+      const dateSettingId = 'invoice_count_date';
+      
+      // Fetch current invoice count and date from database
+      // Use a transaction-like approach: fetch, check, update
+      const { data: countData, error: countError } = await supabase
+        .from('site_settings')
+        .select('value')
+        .eq('id', countSettingId)
+        .maybeSingle();
+      
+      if (countError) {
+        console.error('Error fetching invoice count:', countError);
+        // Continue with default value
+      }
+      
+      const { data: dateData, error: dateError } = await supabase
+        .from('site_settings')
+        .select('value')
+        .eq('id', dateSettingId)
+        .maybeSingle();
+      
+      if (dateError) {
+        console.error('Error fetching invoice count date:', dateError);
+        // Continue with default value
+      }
+      
+      let currentCount = 0;
+      const lastDate = dateData?.value || null;
+      
+      // Check if we need to reset (new day)
+      if (lastDate !== todayStr) {
+        // New day - reset the count to 0
+        currentCount = 0;
+        
+        // Update both count and date in database atomically
+        const { error: updateCountError } = await supabase
+          .from('site_settings')
+          .upsert({ id: countSettingId, value: '0', type: 'number', description: 'Current invoice count for the day' }, { onConflict: 'id' });
+        
+        if (updateCountError) {
+          console.error('Error updating invoice count:', updateCountError);
+        }
+        
+        const { error: updateDateError } = await supabase
+          .from('site_settings')
+          .upsert({ id: dateSettingId, value: todayStr, type: 'text', description: 'Date of the current invoice count' }, { onConflict: 'id' });
+        
+        if (updateDateError) {
+          console.error('Error updating invoice date:', updateDateError);
+        }
+      } else {
+        // Same day - get current count from database
+        currentCount = countData?.value ? parseInt(countData.value, 10) : 0;
+      }
+      
+      // If forceNew is true (Copy button clicked), always increment the count
+      // This ensures each new order gets a new invoice number
+      if (forceNew) {
+        currentCount += 1;
+        
+        // Update count in database - ensure this completes before returning
+        const { error: updateError } = await supabase
+          .from('site_settings')
+          .upsert({ id: countSettingId, value: currentCount.toString(), type: 'number', description: 'Current invoice count for the day' }, { onConflict: 'id' });
+        
+        if (updateError) {
+          console.error('Error updating invoice count:', updateError);
+          // Still use the incremented count even if update fails
+        }
+      } else {
+        // If forceNew is false and no count exists, start at 1
+        if (currentCount === 0) {
+          currentCount = 1;
+          const { error: updateError } = await supabase
+            .from('site_settings')
+            .upsert({ id: countSettingId, value: currentCount.toString(), type: 'number', description: 'Current invoice count for the day' }, { onConflict: 'id' });
+          
+          if (updateError) {
+            console.error('Error updating invoice count:', updateError);
+          }
+        }
+      }
+
+      const orderNumber = currentCount;
+
+      // Format: 1M{day}D{orderNumber}
+      // Example: AKGXT1M17D1 (1st order on day 17), AKGXT1M17D2 (2nd order on day 17), etc.
+      // The first number is always 1, the last number is the order number
+      const invoiceNumber = `AKGXT1M${dayOfMonth}D${orderNumber}`;
+      
+      // Store the generated invoice number and date
+      setGeneratedInvoiceNumber(invoiceNumber);
+      setInvoiceNumberDate(todayStr);
+      
+      return invoiceNumber;
+    } catch (error) {
+      console.error('Error generating invoice number:', error);
+      // Fallback to a simple format if there's an error
+      const { dayOfMonth } = getPhilippineDate();
+      return `1M${dayOfMonth}D1`;
+    }
   };
 
   // Generate the order message text
-  const generateOrderMessage = (): string => {
-    // Build custom fields section grouped by game
-    let customFieldsSection = '';
-    if (hasAnyCustomFields) {
-      // Group games by their field values (to simplify when bulk input is used)
-      const gamesByFieldValues = new Map<string, { games: string[], fields: Array<{ label: string, value: string }> }>();
+  const generateOrderMessage = async (forceNewInvoice: boolean = false): Promise<string> => {
+    // Generate invoice number first
+    // forceNewInvoice is true when "Copy Order Message" is clicked to generate a new number
+    // forceNewInvoice is false when "Order via Messenger" is clicked to reuse existing number
+    const invoiceNumber = await generateInvoiceNumber(forceNewInvoice);
+    
+    // Build message lines
+    const lines: string[] = [];
+    
+    // Invoice number
+    lines.push(`INVOICE # ${invoiceNumber}`);
+    lines.push(''); // Break after invoice
+    
+    // Handle multiple accounts mode
+    if (useMultipleAccounts && canUseMultipleAccounts) {
+      // Group by game and variation
+      const gameGroups = new Map<string, Array<{ variationName: string; items: CartItem[]; fields: Array<{ label: string, value: string }> }>>();
       
-      itemsWithCustomFields.forEach(item => {
-        // Get all field values for this game (use original menu item ID)
-        const originalId = getOriginalMenuItemId(item.id);
-        const fields = item.customFields?.map(field => {
+      itemsByGameAndVariation.forEach(({ gameId, gameName, variationId, variationName, items }) => {
+        const firstItem = items[0];
+        if (!firstItem.customFields) return;
+        
+        const fields = firstItem.customFields.map(field => {
+          const valueKey = `${gameId}_${variationId}_${field.key}`;
+          const value = customFieldValues[valueKey] || '';
+          return value ? { label: field.label, value } : null;
+        }).filter(Boolean) as Array<{ label: string, value: string }>;
+        
+        if (fields.length === 0) return;
+        
+        if (!gameGroups.has(gameName)) {
+          gameGroups.set(gameName, []);
+        }
+        gameGroups.get(gameName)!.push({ variationName, items, fields });
+      });
+      
+      // Build message for each game (game name mentioned once)
+      gameGroups.forEach((variations, gameName) => {
+        lines.push(`GAME: ${gameName}`);
+        
+        variations.forEach(({ variationName, items, fields }) => {
+          // ID & SERVER or other fields
+          if (fields.length === 1) {
+            lines.push(`${fields[0].label}: ${fields[0].value}`);
+          } else if (fields.length > 1) {
+            // Combine fields with & if multiple
+            const allValuesSame = fields.every(f => f.value === fields[0].value);
+            if (allValuesSame) {
+              const labels = fields.map(f => f.label);
+              if (labels.length === 2) {
+                lines.push(`${labels[0]} & ${labels[1]}: ${fields[0].value}`);
+              } else {
+                const allButLast = labels.slice(0, -1).join(', ');
+                const lastLabel = labels[labels.length - 1];
+                lines.push(`${allButLast} & ${lastLabel}: ${fields[0].value}`);
+              }
+            } else {
+              // Different values, show each field separately
+              fields.forEach(field => {
+                lines.push(`${field.label}: ${field.value}`);
+              });
+            }
+          }
+          
+          // Order items for this variation
+          items.forEach(item => {
+            const variationText = item.selectedVariation ? ` ${item.selectedVariation.name}` : '';
+            const addOnsText = item.selectedAddOns && item.selectedAddOns.length > 0
+              ? ` + ${item.selectedAddOns.map(a => a.name).join(', ')}`
+              : '';
+            lines.push(`ORDER: ${item.name}${variationText}${addOnsText} x${item.quantity} - ₱${item.totalPrice * item.quantity}`);
+          });
+        });
+      });
+    } else if (hasAnyCustomFields) {
+      // Build game/order sections (single account or bulk mode)
+      // Group games by their field values (for bulk input)
+      const gamesByFieldValues = new Map<string, { games: string[], items: CartItem[], fields: Array<{ label: string, value: string }> }>();
+      const itemsWithoutFields: CartItem[] = [];
+      
+      cartItems.forEach(cartItem => {
+        const originalId = getOriginalMenuItemId(cartItem.id);
+        const item = itemsWithCustomFields.find(i => getOriginalMenuItemId(i.id) === originalId);
+        
+        if (!item || !item.customFields || item.customFields.length === 0) {
+          // Item without custom fields, handle separately
+          itemsWithoutFields.push(cartItem);
+          return;
+        }
+        
+        const fields = item.customFields.map(field => {
           const valueKey = `${originalId}_${field.key}`;
           const value = customFieldValues[valueKey] || '';
           return value ? { label: field.label, value } : null;
         }).filter(Boolean) as Array<{ label: string, value: string }> || [];
         
-        if (fields.length === 0) return;
+        if (fields.length === 0) {
+          // No field values, treat as item without fields
+          itemsWithoutFields.push(cartItem);
+          return;
+        }
         
         // Create a key based on field values (to group games with same values)
         const valueKey = fields.map(f => `${f.label}:${f.value}`).join('|');
         
         if (!gamesByFieldValues.has(valueKey)) {
-          gamesByFieldValues.set(valueKey, { games: [], fields });
+          gamesByFieldValues.set(valueKey, { games: [], items: [], fields });
         }
-        gamesByFieldValues.get(valueKey)!.games.push(item.name);
+        const group = gamesByFieldValues.get(valueKey)!;
+        if (!group.games.includes(item.name)) {
+          group.games.push(item.name);
+        }
+        group.items.push(cartItem);
+        group.fields = fields; // Use the fields from this item
       });
       
-      // Build the section
-      const sections: string[] = [];
-      gamesByFieldValues.forEach(({ games, fields }) => {
-        if (games.length === 0 || fields.length === 0) return;
+      // Build sections for each group
+      gamesByFieldValues.forEach(({ games, items, fields }) => {
+        // Game name (only once if multiple games share same fields)
+        lines.push(`GAME: ${games.join(', ')}`);
         
-        // Add game names
-        sections.push(games.join('\n'));
-        
-        // If all values are the same, combine into one line
-        const allValuesSame = fields.every(f => f.value === fields[0].value);
-        if (allValuesSame && fields.length > 1) {
-          const labels = fields.map(f => f.label).join(', ');
-          const lastCommaIndex = labels.lastIndexOf(',');
-          const combinedLabels = lastCommaIndex > 0 
-            ? labels.substring(0, lastCommaIndex) + ' &' + labels.substring(lastCommaIndex + 1)
-            : labels;
-          sections.push(`${combinedLabels}: ${fields[0].value}`);
-        } else {
-          // Different values, show each field separately
-          const fieldStrings = fields.map(f => `${f.label}: ${f.value}`).join(', ');
-          sections.push(fieldStrings);
+        // ID & SERVER or other fields
+        if (fields.length === 1) {
+          lines.push(`${fields[0].label}: ${fields[0].value}`);
+        } else if (fields.length > 1) {
+          // Combine fields with & if multiple
+          const allValuesSame = fields.every(f => f.value === fields[0].value);
+          if (allValuesSame) {
+            // All values same, combine labels with &
+            const labels = fields.map(f => f.label);
+            if (labels.length === 2) {
+              lines.push(`${labels[0]} & ${labels[1]}: ${fields[0].value}`);
+            } else {
+              const allButLast = labels.slice(0, -1).join(', ');
+              const lastLabel = labels[labels.length - 1];
+              lines.push(`${allButLast} & ${lastLabel}: ${fields[0].value}`);
+            }
+          } else {
+            // Different values, show each field separately
+            const fieldPairs = fields.map(f => `${f.label}: ${f.value}`);
+            lines.push(fieldPairs.join(', '));
+          }
         }
+        
+        // Order items
+        items.forEach(item => {
+          let orderLine = `ORDER: ${item.selectedVariation?.name || item.name}`;
+          if (item.quantity > 1) {
+            orderLine += ` x${item.quantity}`;
+          }
+          orderLine += ` - ₱${item.totalPrice * item.quantity}`;
+          lines.push(orderLine);
+        });
       });
       
-      if (sections.length > 0) {
-        customFieldsSection = sections.join('\n');
+      // Handle items without custom fields
+      if (itemsWithoutFields.length > 0) {
+        const uniqueGames = [...new Set(itemsWithoutFields.map(item => item.name))];
+        lines.push(`GAME: ${uniqueGames.join(', ')}`);
+        
+        itemsWithoutFields.forEach(item => {
+          let orderLine = `ORDER: ${item.selectedVariation?.name || item.name}`;
+          if (item.quantity > 1) {
+            orderLine += ` x${item.quantity}`;
+          }
+          orderLine += ` - ₱${item.totalPrice * item.quantity}`;
+          lines.push(orderLine);
+        });
       }
     } else {
-      customFieldsSection = `IGN: ${customFieldValues['default_ign'] || ''}`;
+      // No custom fields, single account mode
+      const uniqueGames = [...new Set(cartItems.map(item => item.name))];
+      lines.push(`GAME: ${uniqueGames.join(', ')}`);
+      
+      // Default IGN field
+      const ign = customFieldValues['default_ign'] || '';
+      if (ign) {
+        lines.push(`IGN: ${ign}`);
+      }
+      
+      // Order items
+      cartItems.forEach(item => {
+        let orderLine = `ORDER: ${item.selectedVariation?.name || item.name}`;
+        if (item.quantity > 1) {
+          orderLine += ` x${item.quantity}`;
+        }
+        orderLine += ` - ₱${item.totalPrice * item.quantity}`;
+        lines.push(orderLine);
+      });
     }
+    
+    // Payment
+    const paymentLine = `PAYMENT: ${selectedPaymentMethod?.name || ''}${selectedPaymentMethod?.account_name ? ` - ${selectedPaymentMethod.account_name}` : ''}`;
+    lines.push(paymentLine);
+    
+    // Total
+    lines.push(`TOTAL: ₱${totalPrice}`);
+    lines.push(''); // Break before payment receipt
+    
+    // Payment Receipt
+    lines.push('PAYMENT RECEIPT:');
+    if (receiptImageUrl) {
+      lines.push(receiptImageUrl);
+    }
+    
+    return lines.join('\n');
+  };
 
-    const orderDetails = `
-${customFieldsSection}
+  const isSavingOrder = useRef(false);
 
-ORDER DETAILS:
-${cartItems.map(item => {
-  let itemDetails = `• ${item.name}`;
-  if (item.selectedVariation) {
-    itemDetails += ` (${item.selectedVariation.name})`;
-  }
-  itemDetails += ` x${item.quantity} - ₱${item.totalPrice * item.quantity}`;
-  return itemDetails;
-}).join('\n')}
-
-TOTAL: ₱${totalPrice}
-
-Payment: ${selectedPaymentMethod?.name || ''}
-
-Payment Receipt: ${receiptImageUrl || ''}
-    `.trim();
-
-    return orderDetails;
+  const saveOrderToDb = async () => {
+    if (orderId || isSavingOrder.current) return orderId;
+    
+    try {
+      isSavingOrder.current = true;
+      const customerInfo = getCustomerInfo();
+      
+      // Generate invoice number if not already generated
+      // This ensures each order has a unique invoice number
+      let invoiceNum = generatedInvoiceNumber;
+      if (!invoiceNum || invoiceNumberDate !== getPhilippineDate().dateString) {
+        // Generate new invoice number (forceNew = true to ensure increment)
+        invoiceNum = await generateInvoiceNumber(true);
+      }
+      
+      const newOrder = await createOrder({
+        order_items: cartItems,
+        customer_info: customerInfo as Record<string, string> | Array<{ game: string; package: string; fields: Record<string, string> }>,
+          payment_method_id: paymentMethod!.id,
+        receipt_url: receiptImageUrl!,
+        total_price: totalPrice,
+        member_id: currentMember?.id,
+        order_option: orderOption,
+        invoice_number: invoiceNum,
+      });
+      
+      if (newOrder) {
+        setOrderId(newOrder.id);
+        return newOrder.id;
+      }
+    } catch (error) {
+      console.error('Error saving order to database:', error);
+    } finally {
+      isSavingOrder.current = false;
+    }
+    return null;
   };
 
   const handleCopyMessage = async () => {
     try {
-      const message = generateOrderMessage();
-      await navigator.clipboard.writeText(message);
-      setCopied(true);
-      setHasCopiedMessage(true); // Mark that copy button has been clicked
-      setTimeout(() => setCopied(false), 2000);
+      // Save order to database if not already saved
+      saveOrderToDb();
+
+      // Detect iOS and Mac - use execCommand directly for better compatibility
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+                    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      const isMac = /Mac/.test(navigator.platform) || /MacIntel|MacPPC|Mac68K/.test(navigator.platform);
+      const needsSyncCopy = isIOS || isMac;
+      
+      // For iOS and Mac, we need to copy synchronously within user gesture
+      // So we generate message first, then copy immediately
+      let message: string;
+      
+      if (needsSyncCopy) {
+        // On iOS/Mac, we MUST copy synchronously within the user gesture
+        // Use existing state first, then calculate optimistically, copy immediately
+        const { dateString: todayStr, dayOfMonth } = getPhilippineDate();
+        
+        // Calculate optimistic invoice number synchronously
+        let optimisticCount = 1;
+        if (generatedInvoiceNumber && invoiceNumberDate === todayStr) {
+          // We have an existing invoice number for today - increment it
+          const match = generatedInvoiceNumber.match(/AKGXT1M\d+D(\d+)/);
+          if (match) {
+            optimisticCount = parseInt(match[1], 10) + 1;
+          }
+        } else {
+          // No existing number or different day - start at 1
+          optimisticCount = 1;
+        }
+        
+        const optimisticInvoiceNumber = `AKGXT1M${dayOfMonth}D${optimisticCount}`;
+        
+        // Generate message synchronously (this function is async but doesn't do DB calls)
+        message = await generateOrderMessageSync(optimisticInvoiceNumber);
+        
+        // Copy immediately (synchronously) - MUST happen within user gesture
+        const textarea = document.createElement('textarea');
+        textarea.value = message;
+        textarea.style.position = 'fixed';
+        textarea.style.left = '0';
+        textarea.style.top = '0';
+        textarea.style.opacity = '0';
+        textarea.style.pointerEvents = 'none';
+        textarea.setAttribute('readonly', '');
+        textarea.setAttribute('contenteditable', 'true');
+        document.body.appendChild(textarea);
+        
+        // Focus and select for iOS/Mac
+        textarea.focus();
+        textarea.select();
+        textarea.setSelectionRange(0, message.length);
+        
+        // Try execCommand first (works better on iOS/Mac)
+        let successful = false;
+        try {
+          successful = document.execCommand('copy');
+        } catch (e) {
+          console.error('execCommand failed:', e);
+        }
+        
+        // Clean up
+        document.body.removeChild(textarea);
+        
+        if (successful) {
+          setCopied(true);
+          setHasCopiedMessage(true);
+          setTimeout(() => setCopied(false), 2000);
+          
+          // Update database in background (async, doesn't block)
+          // This ensures the count is properly saved for the next order
+          generateInvoiceNumber(true).then((actualInvoiceNumber) => {
+            // Update state with actual invoice number
+            setGeneratedInvoiceNumber(actualInvoiceNumber);
+            setInvoiceNumberDate(todayStr);
+          }).catch(console.error);
+        } else {
+          // Fallback: try clipboard API (may not work on older iOS/Mac)
+          try {
+            await navigator.clipboard.writeText(message);
+            setCopied(true);
+            setHasCopiedMessage(true);
+            setTimeout(() => setCopied(false), 2000);
+            
+            // Update database in background
+            generateInvoiceNumber(true).then((actualInvoiceNumber) => {
+              setGeneratedInvoiceNumber(actualInvoiceNumber);
+              setInvoiceNumberDate(todayStr);
+            }).catch(console.error);
+          } catch (clipboardError) {
+            console.error('Failed to copy message on iOS/Mac:', clipboardError);
+            alert('Failed to copy. Please try again or copy manually.');
+          }
+        }
+      } else {
+        // For non-iOS/Mac, use async approach
+        message = await generateOrderMessage(true);
+        
+        try {
+          await navigator.clipboard.writeText(message);
+          setCopied(true);
+          setHasCopiedMessage(true);
+          setTimeout(() => setCopied(false), 2000);
+        } catch (clipboardError) {
+          // Fallback for older browsers
+          const textarea = document.createElement('textarea');
+          textarea.value = message;
+          textarea.style.position = 'fixed';
+          textarea.style.left = '-999999px';
+          textarea.style.top = '-999999px';
+          document.body.appendChild(textarea);
+          textarea.focus();
+          textarea.select();
+          
+          const successful = document.execCommand('copy');
+          document.body.removeChild(textarea);
+          
+          if (successful) {
+            setCopied(true);
+            setHasCopiedMessage(true);
+            setTimeout(() => setCopied(false), 2000);
+          } else {
+            console.error('Failed to copy message');
+          }
+        }
+      }
     } catch (error) {
       console.error('Failed to copy message:', error);
     }
   };
+  
+  // Synchronous version of generateOrderMessage that uses a provided invoice number
+  const generateOrderMessageSync = async (invoiceNumber: string): Promise<string> => {
+    // Build message lines (same logic as generateOrderMessage but without invoice generation)
+    const lines: string[] = [];
+    
+    // Invoice number
+    lines.push(`INVOICE # ${invoiceNumber}`);
+    lines.push(''); // Break after invoice
+    
+    // Handle multiple accounts mode
+    if (useMultipleAccounts && canUseMultipleAccounts) {
+      // Group by game and variation
+      const gameGroups = new Map<string, Array<{ variationName: string; items: CartItem[]; fields: Array<{ label: string, value: string }> }>>();
+      
+      itemsByGameAndVariation.forEach(({ gameId, gameName, variationId, variationName, items }) => {
+        const firstItem = items[0];
+        if (!firstItem.customFields) return;
+        
+        const fields = firstItem.customFields.map(field => {
+          const valueKey = `${gameId}_${variationId}_${field.key}`;
+          const value = customFieldValues[valueKey] || '';
+          return value ? { label: field.label, value } : null;
+        }).filter(Boolean) as Array<{ label: string, value: string }>;
+        
+        if (fields.length === 0) return;
+        
+        if (!gameGroups.has(gameName)) {
+          gameGroups.set(gameName, []);
+        }
+        gameGroups.get(gameName)!.push({ variationName, items, fields });
+      });
+      
+      // Build message for each game (game name mentioned once)
+      gameGroups.forEach((variations, gameName) => {
+        lines.push(`GAME: ${gameName}`);
+        
+        variations.forEach(({ variationName, items, fields }) => {
+          // ID & SERVER or other fields
+          if (fields.length === 1) {
+            lines.push(`${fields[0].label}: ${fields[0].value}`);
+          } else if (fields.length > 1) {
+            // Combine fields with & if multiple
+            const allValuesSame = fields.every(f => f.value === fields[0].value);
+            if (allValuesSame) {
+              const labels = fields.map(f => f.label);
+              if (labels.length === 2) {
+                lines.push(`${labels[0]} & ${labels[1]}: ${fields[0].value}`);
+              } else {
+                const allButLast = labels.slice(0, -1).join(', ');
+                const lastLabel = labels[labels.length - 1];
+                lines.push(`${allButLast} & ${lastLabel}: ${fields[0].value}`);
+              }
+            } else {
+              // Different values, show each field separately
+              fields.forEach(field => {
+                lines.push(`${field.label}: ${field.value}`);
+              });
+            }
+          }
+          
+          // Order items for this variation
+          items.forEach(item => {
+            const variationText = item.selectedVariation ? ` ${item.selectedVariation.name}` : '';
+            const addOnsText = item.selectedAddOns && item.selectedAddOns.length > 0
+              ? ` + ${item.selectedAddOns.map(a => a.name).join(', ')}`
+              : '';
+            lines.push(`ORDER: ${item.name}${variationText}${addOnsText} x${item.quantity} - ₱${item.totalPrice * item.quantity}`);
+          });
+        });
+      });
+    } else if (hasAnyCustomFields) {
+      // Build game/order sections (single account or bulk mode)
+      // Group games by their field values (for bulk input)
+      const gamesByFieldValues = new Map<string, { games: string[], items: CartItem[], fields: Array<{ label: string, value: string }> }>();
+      const itemsWithoutFields: CartItem[] = [];
+      
+      cartItems.forEach(cartItem => {
+        const originalId = getOriginalMenuItemId(cartItem.id);
+        const item = itemsWithCustomFields.find(i => getOriginalMenuItemId(i.id) === originalId);
+        
+        if (!item || !item.customFields || item.customFields.length === 0) {
+          // Item without custom fields, handle separately
+          itemsWithoutFields.push(cartItem);
+          return;
+        }
+        
+        const fields = item.customFields.map(field => {
+          const valueKey = `${originalId}_${field.key}`;
+          const value = customFieldValues[valueKey] || '';
+          return value ? { label: field.label, value } : null;
+        }).filter(Boolean) as Array<{ label: string, value: string }> || [];
+        
+        if (fields.length === 0) {
+          // No field values, treat as item without fields
+          itemsWithoutFields.push(cartItem);
+          return;
+        }
+        
+        // Create a key based on field values (to group games with same values)
+        const valueKey = fields.map(f => `${f.label}:${f.value}`).join('|');
+        
+        if (!gamesByFieldValues.has(valueKey)) {
+          gamesByFieldValues.set(valueKey, { games: [], items: [], fields });
+        }
+        const group = gamesByFieldValues.get(valueKey)!;
+        if (!group.games.includes(item.name)) {
+          group.games.push(item.name);
+        }
+        group.items.push(cartItem);
+        group.fields = fields; // Use the fields from this item
+      });
+      
+      // Build sections for each group
+      gamesByFieldValues.forEach(({ games, items, fields }) => {
+        // Game name (only once if multiple games share same fields)
+        lines.push(`GAME: ${games.join(', ')}`);
+        
+        // ID & SERVER or other fields
+        if (fields.length === 1) {
+          lines.push(`${fields[0].label}: ${fields[0].value}`);
+        } else if (fields.length > 1) {
+          // Combine fields with & if multiple
+          const allValuesSame = fields.every(f => f.value === fields[0].value);
+          if (allValuesSame) {
+            // All values same, combine labels with &
+            const labels = fields.map(f => f.label);
+            if (labels.length === 2) {
+              lines.push(`${labels[0]} & ${labels[1]}: ${fields[0].value}`);
+            } else {
+              const allButLast = labels.slice(0, -1).join(', ');
+              const lastLabel = labels[labels.length - 1];
+              lines.push(`${allButLast} & ${lastLabel}: ${fields[0].value}`);
+            }
+          } else {
+            // Different values, show each field separately
+            const fieldPairs = fields.map(f => `${f.label}: ${f.value}`);
+            lines.push(fieldPairs.join(', '));
+          }
+        }
+        
+        // Order items
+        items.forEach(item => {
+          let orderLine = `ORDER: ${item.selectedVariation?.name || item.name}`;
+          if (item.quantity > 1) {
+            orderLine += ` x${item.quantity}`;
+          }
+          orderLine += ` - ₱${item.totalPrice * item.quantity}`;
+          lines.push(orderLine);
+        });
+      });
+      
+      // Handle items without custom fields
+      if (itemsWithoutFields.length > 0) {
+        const uniqueGames = [...new Set(itemsWithoutFields.map(item => item.name))];
+        lines.push(`GAME: ${uniqueGames.join(', ')}`);
+        
+        itemsWithoutFields.forEach(item => {
+          let orderLine = `ORDER: ${item.selectedVariation?.name || item.name}`;
+          if (item.quantity > 1) {
+            orderLine += ` x${item.quantity}`;
+          }
+          orderLine += ` - ₱${item.totalPrice * item.quantity}`;
+          lines.push(orderLine);
+        });
+      }
+    } else {
+      // No custom fields, single account mode
+      const uniqueGames = [...new Set(cartItems.map(item => item.name))];
+      lines.push(`GAME: ${uniqueGames.join(', ')}`);
+      
+      // Default IGN field
+      const ign = customFieldValues['default_ign'] || '';
+      if (ign) {
+        lines.push(`IGN: ${ign}`);
+      }
+      
+      // Order items
+      cartItems.forEach(item => {
+        let orderLine = `ORDER: ${item.selectedVariation?.name || item.name}`;
+        if (item.quantity > 1) {
+          orderLine += ` x${item.quantity}`;
+        }
+        orderLine += ` - ₱${item.totalPrice * item.quantity}`;
+        lines.push(orderLine);
+      });
+    }
+    
+    // Payment
+    const paymentLine = `PAYMENT: ${selectedPaymentMethod?.name || ''}${selectedPaymentMethod?.account_name ? ` - ${selectedPaymentMethod.account_name}` : ''}`;
+    lines.push(paymentLine);
+    
+    // Total
+    lines.push(`TOTAL: ₱${totalPrice}`);
+    lines.push(''); // Break before payment receipt
+    
+    // Payment Receipt
+    lines.push('PAYMENT RECEIPT:');
+    if (receiptImageUrl) {
+      lines.push(receiptImageUrl);
+    }
+    
+    return lines.join('\n');
+  };
 
   const handleCopyAccountNumber = async (accountNumber: string) => {
     try {
-      await navigator.clipboard.writeText(accountNumber);
-      setCopiedAccountNumber(true);
-      setTimeout(() => setCopiedAccountNumber(false), 2000);
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+                    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      
+      if (isIOS) {
+        const textarea = document.createElement('textarea');
+        textarea.value = accountNumber;
+        textarea.style.position = 'fixed';
+        textarea.style.left = '0';
+        textarea.style.top = '0';
+        textarea.style.opacity = '0';
+        textarea.style.pointerEvents = 'none';
+        textarea.setAttribute('readonly', '');
+        document.body.appendChild(textarea);
+        textarea.select();
+        textarea.setSelectionRange(0, accountNumber.length);
+        const successful = document.execCommand('copy');
+        document.body.removeChild(textarea);
+        if (successful) {
+          setCopiedAccountNumber(true);
+          setTimeout(() => setCopiedAccountNumber(false), 2000);
+        }
+      } else {
+        try {
+          await navigator.clipboard.writeText(accountNumber);
+          setCopiedAccountNumber(true);
+          setTimeout(() => setCopiedAccountNumber(false), 2000);
+        } catch (clipboardError) {
+          const textarea = document.createElement('textarea');
+          textarea.value = accountNumber;
+          textarea.style.position = 'fixed';
+          textarea.style.left = '-999999px';
+          textarea.style.top = '-999999px';
+          document.body.appendChild(textarea);
+          textarea.focus();
+          textarea.select();
+          const successful = document.execCommand('copy');
+          document.body.removeChild(textarea);
+          if (successful) {
+            setCopiedAccountNumber(true);
+            setTimeout(() => setCopiedAccountNumber(false), 2000);
+          }
+        }
+      }
     } catch (error) {
       console.error('Failed to copy account number:', error);
     }
@@ -345,9 +1182,49 @@ Payment Receipt: ${receiptImageUrl || ''}
 
   const handleCopyAccountName = async (accountName: string) => {
     try {
-      await navigator.clipboard.writeText(accountName);
-      setCopiedAccountName(true);
-      setTimeout(() => setCopiedAccountName(false), 2000);
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+                    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      
+      if (isIOS) {
+        const textarea = document.createElement('textarea');
+        textarea.value = accountName;
+        textarea.style.position = 'fixed';
+        textarea.style.left = '0';
+        textarea.style.top = '0';
+        textarea.style.opacity = '0';
+        textarea.style.pointerEvents = 'none';
+        textarea.setAttribute('readonly', '');
+        document.body.appendChild(textarea);
+        textarea.select();
+        textarea.setSelectionRange(0, accountName.length);
+        const successful = document.execCommand('copy');
+        document.body.removeChild(textarea);
+        if (successful) {
+          setCopiedAccountName(true);
+          setTimeout(() => setCopiedAccountName(false), 2000);
+        }
+      } else {
+        try {
+          await navigator.clipboard.writeText(accountName);
+          setCopiedAccountName(true);
+          setTimeout(() => setCopiedAccountName(false), 2000);
+        } catch (clipboardError) {
+          const textarea = document.createElement('textarea');
+          textarea.value = accountName;
+          textarea.style.position = 'fixed';
+          textarea.style.left = '-999999px';
+          textarea.style.top = '-999999px';
+          document.body.appendChild(textarea);
+          textarea.focus();
+          textarea.select();
+          const successful = document.execCommand('copy');
+          document.body.removeChild(textarea);
+          if (successful) {
+            setCopiedAccountName(true);
+            setTimeout(() => setCopiedAccountName(false), 2000);
+          }
+        }
+      }
     } catch (error) {
       console.error('Failed to copy account name:', error);
     }
@@ -359,11 +1236,12 @@ Payment Receipt: ${receiptImageUrl || ''}
            /FB_IAB/i.test(navigator.userAgent);
   }, []);
 
-  const handleDownloadQRCode = async (qrCodeUrl: string, paymentMethodName: string) => {
+  const handleDownloadQRCode = async (qrCodeUrl: string | null | undefined, paymentMethodName: string) => {
     // Only disable in Messenger's in-app browser
     // All external browsers (Chrome, Safari, Firefox, Edge, etc.) should work
-    if (isMessengerBrowser) {
+    if (isMessengerBrowser || !qrCodeUrl) {
       // In Messenger, downloads don't work - users can long-press the QR code image
+      // Also return early if no QR code URL is provided
       return;
     }
     
@@ -417,34 +1295,70 @@ Payment Receipt: ${receiptImageUrl || ''}
     }
   };
 
-  // Check for existing order on mount
-  useEffect(() => {
-    const checkExistingOrder = async () => {
-      const storedOrderId = localStorage.getItem('current_order_id');
-      if (storedOrderId) {
-        const order = await fetchOrderById(storedOrderId);
-        if (order) {
-          setExistingOrderStatus(order.status);
-          setOrderId(order.id);
-          
-          // Clear localStorage only if order is approved (succeeded)
-          // Keep rejected orders so user can still view them
-          if (order.status === 'approved') {
-            localStorage.removeItem('current_order_id');
-            setExistingOrderStatus(null);
-            setOrderId(null);
+  const getCustomerInfo = () => {
+    let customerInfo: Record<string, string> | Array<{ game: string; package: string; fields: Record<string, string> }>;
+    
+    if (useMultipleAccounts && canUseMultipleAccounts) {
+      // Multiple accounts mode: store as array
+      const accountsData: Array<{ game: string; package: string; fields: Record<string, string> }> = [];
+      
+      itemsByGameAndVariation.forEach(({ gameId, gameName, variationId, variationName, items }) => {
+        const firstItem = items[0];
+        if (!firstItem.customFields) return;
+        
+        const fields: Record<string, string> = {};
+        firstItem.customFields.forEach(field => {
+          const valueKey = `${gameId}_${variationId}_${field.key}`;
+          const value = customFieldValues[valueKey];
+          if (value) {
+            fields[field.label] = value;
           }
-        } else {
-          localStorage.removeItem('current_order_id');
+        });
+        
+        if (Object.keys(fields).length > 0) {
+          accountsData.push({
+            game: gameName,
+            package: variationName,
+            fields
+          });
+        }
+      });
+      
+      customerInfo = accountsData.length > 0 ? accountsData : {};
+    } else {
+      // Single account mode: store as flat object
+      const singleAccountInfo: Record<string, string> = {};
+      
+      // Add payment method
+      if (selectedPaymentMethod) {
+        singleAccountInfo['Payment Method'] = selectedPaymentMethod.name;
+      }
+
+      // Add custom fields
+      if (hasAnyCustomFields) {
+        itemsWithCustomFields.forEach((item) => {
+          const originalId = getOriginalMenuItemId(item.id);
+          item.customFields?.forEach(field => {
+            const valueKey = `${originalId}_${field.key}`;
+            const value = customFieldValues[valueKey];
+            if (value) {
+              singleAccountInfo[field.label] = value;
+            }
+          });
+        });
+      } else {
+        // Default IGN field
+        if (customFieldValues['default_ign']) {
+          singleAccountInfo['IGN'] = customFieldValues['default_ign'];
         }
       }
-      setIsCheckingExistingOrder(false);
-    };
+      
+      customerInfo = singleAccountInfo;
+    }
+    return customerInfo;
+  };
 
-    checkExistingOrder();
-  }, [fetchOrderById]);
-
-  const handlePlaceOrder = () => {
+  const handlePlaceOrder = async () => {
     if (!paymentMethod) {
       setReceiptError('Please select a payment method');
       return;
@@ -455,11 +1369,17 @@ Payment Receipt: ${receiptImageUrl || ''}
       return;
     }
 
-    const orderDetails = generateOrderMessage();
+    // Save order to database if not already saved
+    await saveOrderToDb();
+
+    // Reuse the existing invoice number (don't generate a new one)
+    // If no invoice number exists yet, it will generate one, but ideally Copy should be clicked first
+    const orderDetails = await generateOrderMessage(false);
     const encodedMessage = encodeURIComponent(orderDetails);
     const messengerUrl = `https://m.me/DiginixPh?text=${encodedMessage}`;
     
     window.open(messengerUrl, '_blank');
+    
   };
 
   const handlePlaceOrderDirect = async () => {
@@ -473,60 +1393,22 @@ Payment Receipt: ${receiptImageUrl || ''}
       return;
     }
 
-    if (!selectedPaymentMethod) {
-      setReceiptError('Please select a payment method');
-      return;
-    }
+    setIsPlacingOrder(true);
+    setReceiptError(null);
 
     try {
-      setIsPlacingOrder(true);
-      setReceiptError(null);
+      const savedOrderId = await saveOrderToDb();
 
-      // Build customer info object
-      const customerInfo: Record<string, string | unknown> = {};
-      
-      // Add payment method
-      customerInfo['Payment Method'] = selectedPaymentMethod.name;
-
-      // Single account mode (default)
-      // Add custom fields
-      if (hasAnyCustomFields) {
-        itemsWithCustomFields.forEach((item) => {
-          const originalId = getOriginalMenuItemId(item.id);
-          item.customFields?.forEach((field, fieldIndex) => {
-            // Use fieldIndex to ensure uniqueness even if field.key is duplicated
-            const valueKey = `${originalId}_${fieldIndex}_${field.key}`;
-            const value = customFieldValues[valueKey];
-            if (value) {
-              customerInfo[field.label] = value;
-            }
-          });
-        });
-      } else {
-        // Default IGN field
-        if (customFieldValues['default_ign']) {
-          customerInfo['IGN'] = customFieldValues['default_ign'];
-        }
-      }
-
-      // Create order
-      const newOrder = await createOrder({
-        order_items: cartItems,
-        customer_info: customerInfo as Record<string, string | unknown>,
-        payment_method_id: selectedPaymentMethod.id,
-        receipt_url: receiptImageUrl,
-        total_price: totalPrice,
-      });
-
-      if (newOrder) {
-        setOrderId(newOrder.id);
-        setExistingOrderStatus(newOrder.status);
-        localStorage.setItem('current_order_id', newOrder.id);
+      if (savedOrderId) {
+        // Store order ID in localStorage for "place_order" option so it can be shown when user returns
+        localStorage.setItem('pendingPlaceOrderId', savedOrderId);
         setIsOrderModalOpen(true);
+      } else {
+        setReceiptError('Failed to create order. Please try again.');
       }
     } catch (error) {
       console.error('Error placing order:', error);
-      setReceiptError('Failed to place order. Please try again.');
+      setReceiptError('Failed to create order. Please try again.');
     } finally {
       setIsPlacingOrder(false);
     }
@@ -538,86 +1420,59 @@ Payment Receipt: ${receiptImageUrl || ''}
       return customFieldValues['default_ign']?.trim() || false;
     }
     
-    // Check all required fields for all items (use original menu item ID)
+    // Multiple accounts mode
+    if (useMultipleAccounts && canUseMultipleAccounts) {
+      return itemsByGameAndVariation.every(({ gameId, variationId, items }) => {
+        const firstItem = items[0];
+        if (!firstItem.customFields) return true;
+        
+        return firstItem.customFields.every(field => {
+          if (!field.required) return true;
+          const valueKey = `${gameId}_${variationId}_${field.key}`;
+          return customFieldValues[valueKey]?.trim() || false;
+        });
+      });
+    }
+    
+    // Single account mode: Check all required fields for all items (use original menu item ID)
     return itemsWithCustomFields.every(item => {
       if (!item.customFields) return true;
       const originalId = getOriginalMenuItemId(item.id);
-      return item.customFields.every((field, fieldIndex) => {
+      return item.customFields.every(field => {
         if (!field.required) return true;
-        // Use fieldIndex to ensure uniqueness even if field.key is duplicated
-        const valueKey = `${originalId}_${fieldIndex}_${field.key}`;
+        const valueKey = `${originalId}_${field.key}`;
         return customFieldValues[valueKey]?.trim() || false;
       });
     });
-  }, [hasAnyCustomFields, itemsWithCustomFields, customFieldValues]);
+  }, [hasAnyCustomFields, itemsWithCustomFields, customFieldValues, useMultipleAccounts, canUseMultipleAccounts, itemsByGameAndVariation]);
 
-  const renderOrderStatusModal = () => (
-    <OrderStatusModal
-      orderId={orderId}
-      isOpen={isOrderModalOpen}
-      onClose={() => {
-        setIsOrderModalOpen(false);
-        // Check order status when modal closes
-        if (orderId) {
-          fetchOrderById(orderId).then(order => {
-            if (order) {
-              setExistingOrderStatus(order.status);
-              if (order.status === 'approved') {
-                // Clear localStorage and state only for approved orders
-                localStorage.removeItem('current_order_id');
-                setExistingOrderStatus(null);
-                setOrderId(null);
-              }
-              // For rejected orders, keep the IDs and localStorage so user can still view the order details
-              // and the "Order Again" button will show
-            }
-          });
-        }
-      }}
-      onSucceededClose={() => {
-        localStorage.removeItem('current_order_id');
-        setExistingOrderStatus(null);
-        setOrderId(null);
-        if (onNavigateToMenu) {
-          onNavigateToMenu();
-        }
-      }}
-    />
-  );
+  return (
+    <div className="max-w-4xl mx-auto px-4 py-8">
+      <div className="flex items-center justify-center mb-8 relative">
+        <button
+          onClick={onBack}
+          className="flex items-center text-cafe-textMuted hover:text-cafe-primary transition-colors duration-200 absolute left-0"
+        >
+          <ArrowLeft className="h-5 w-5" />
+        </button>
+        <h1 className="text-3xl font-semibold text-cafe-text">Top Up</h1>
+      </div>
 
-  if (step === 'details') {
-    return (
-      <>
-        <div className="max-w-4xl mx-auto px-4 py-8">
-        <div className="flex items-center mb-8">
-          <button
-            onClick={onBack}
-            className="flex items-center text-cafe-textMuted hover:text-cafe-primary transition-colors duration-200"
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </button>
-          <h1 className="text-3xl font-semibold text-cafe-text text-center flex-1">Order Details</h1>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div className="space-y-6">
           {/* Customer Details Form */}
-          <div className="glass-card rounded-xl p-6">
-            <h2 className="text-2xl font-medium text-cafe-text mb-6">Customer Information</h2>
+          <div>
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-6 h-6 rounded-full bg-cafe-primary text-white flex items-center justify-center text-xs font-bold flex-shrink-0">
+                1
+              </div>
+              <h2 className="text-sm font-medium text-cafe-text">Customer Information</h2>
+            </div>
             
             <form className="space-y-6">
-              {/* Show count of items with custom fields */}
-              {hasAnyCustomFields && itemsWithCustomFields.length > 0 && (
-                <div className="mb-4 p-3 glass border border-cafe-primary/30 rounded-lg">
-                  <p className="text-sm text-cafe-text">
-                    <span className="font-semibold">{itemsWithCustomFields.length}</span> game{itemsWithCustomFields.length > 1 ? 's' : ''} require{itemsWithCustomFields.length === 1 ? 's' : ''} additional information
-                  </p>
-                </div>
-              )}
-
               {/* Bulk Input Section */}
               {itemsWithCustomFields.length >= 2 && (
                 <div className="mb-6 p-4 glass-strong border border-cafe-primary/30 rounded-lg">
-                  <h3 className="text-lg font-semibold text-cafe-text mb-4">Bulk Input</h3>
+                  <h3 className="text-sm font-semibold text-cafe-text mb-4">Bulk Input</h3>
                   <p className="text-sm text-cafe-textMuted mb-4">
                     Select games and fill fields once for all selected games.
                   </p>
@@ -656,7 +1511,7 @@ Payment Receipt: ${receiptImageUrl || ''}
                             type="text"
                             value={bulkInputValues[index.toString()] || ''}
                             onChange={(e) => handleBulkInputChange(index.toString(), e.target.value)}
-                            className="w-full px-4 py-3 glass border border-cafe-primary/30 rounded-lg focus:ring-2 focus:ring-cafe-primary focus:border-cafe-primary transition-all duration-200 text-cafe-text placeholder-cafe-textMuted"
+                            className="w-full px-4 py-3 glass border border-cafe-primary/30 rounded-lg focus:ring-2 focus:ring-cafe-primary focus:border-cafe-primary transition-all duration-200 text-sm text-cafe-text placeholder-cafe-textMuted"
                             placeholder={field?.placeholder || field?.label || `Field ${index + 1}`}
                           />
                         </div>
@@ -666,590 +1521,505 @@ Payment Receipt: ${receiptImageUrl || ''}
                 </div>
               )}
 
+              {/* Multiple Accounts Toggle */}
+              {canUseMultipleAccounts && (
+                <div className="mb-6 p-4 glass-strong border border-cafe-primary/30 rounded-lg">
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={useMultipleAccounts}
+                      onChange={(e) => setUseMultipleAccounts(e.target.checked)}
+                      className="w-5 h-5 text-cafe-primary border-cafe-primary/30 rounded focus:ring-cafe-primary"
+                    />
+                    <div>
+                      <p className="text-sm font-medium text-cafe-text">Multiple Accounts</p>
+                      <p className="text-xs text-cafe-textMuted">Enable if you need separate account information for different packages of the same game</p>
+                    </div>
+                  </label>
+                </div>
+              )}
+
               {/* Dynamic Custom Fields grouped by game */}
               {hasAnyCustomFields ? (
-                itemsWithCustomFields.map((item, itemIndex) => (
-                  <div key={item.id} className="space-y-4 pb-6 border-b border-cafe-primary/20 last:border-b-0 last:pb-0">
-                    <div className="mb-4">
-                      <h3 className="text-lg font-semibold text-cafe-text">{item.name}</h3>
-                      <p className="text-sm text-cafe-textMuted">Please provide the following information for this game</p>
-                    </div>
-                    {item.customFields?.map((field, fieldIndex) => {
-                      const originalId = getOriginalMenuItemId(item.id);
-                      // Use fieldIndex to ensure uniqueness even if field.key is duplicated within the same game
-                      const valueKey = `${originalId}_${fieldIndex}_${field.key}`;
-                      const inputId = `input-${originalId}-${itemIndex}-${fieldIndex}-${field.key}`;
-                      return (
-                        <div key={`${item.id}-${fieldIndex}-${field.key}`}>
-                          <label htmlFor={inputId} className="block text-sm font-medium text-cafe-text mb-2">
-                            {field.label} {field.required && <span className="text-red-500">*</span>}
-                          </label>
-                          <input
-                            id={inputId}
-                            type="text"
-                            name={valueKey}
-                            autoComplete="off"
-                            value={customFieldValues[valueKey] || ''}
-                            onChange={(e) => {
-                              const newValue = e.target.value;
-                              setCustomFieldValues(prev => ({
-                                ...prev,
-                                [valueKey]: newValue
-                              }));
-                            }}
-                            className="w-full px-4 py-3 glass border border-cafe-primary/30 rounded-lg focus:ring-2 focus:ring-cafe-primary focus:border-cafe-primary transition-all duration-200 text-cafe-text placeholder-cafe-textMuted"
-                            placeholder={field.placeholder || field.label}
-                            required={field.required}
-                          />
+                useMultipleAccounts && canUseMultipleAccounts ? (
+                  // Multiple accounts mode: show fields for each package
+                  itemsByGameAndVariation.map(({ gameId, gameName, variationId, variationName, items }) => {
+                    const firstItem = items[0];
+                    if (!firstItem.customFields) return null;
+
+                    return (
+                      <div key={`${gameId}_${variationId}`} className="space-y-4 pb-6 border-b border-cafe-primary/20 last:border-b-0 last:pb-0">
+                        <div className="mb-4 flex items-center gap-4">
+                          {/* Game Icon */}
+                          <div className="flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden bg-gradient-to-br from-cafe-darkCard to-cafe-darkBg">
+                            {firstItem.image ? (
+                              <img
+                                src={firstItem.image}
+                                alt={gameName}
+                                className="w-full h-full object-cover"
+                                onError={(e) => {
+                                  e.currentTarget.style.display = 'none';
+                                  e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                                }}
+                              />
+                            ) : null}
+                            <div className={`absolute inset-0 flex items-center justify-center ${firstItem.image ? 'hidden' : ''}`}>
+                              <div className="text-4xl opacity-20 text-gray-400">🎮</div>
+                            </div>
+                          </div>
+                          <div>
+                            <h3 className="text-lg font-semibold text-cafe-text">{gameName}</h3>
+                            <p className="text-sm text-cafe-textMuted">{variationName}</p>
+                          </div>
                         </div>
-                      );
-                    })}
-                  </div>
-                ))
+                        {firstItem.customFields.map((field) => {
+                          const valueKey = `${gameId}_${variationId}_${field.key}`;
+                          return (
+                            <div key={field.key}>
+                              <label className="block text-sm font-medium text-cafe-text mb-2">
+                                {field.label} {field.required && <span className="text-red-500">*</span>}
+                              </label>
+                              <input
+                                type="text"
+                                value={customFieldValues[valueKey] || ''}
+                                onChange={(e) => setCustomFieldValues(prev => ({ ...prev, [valueKey]: e.target.value }))}
+                                className="w-full px-3 py-2 glass border border-cafe-primary/30 rounded-lg focus:ring-2 focus:ring-cafe-primary focus:border-cafe-primary transition-all duration-200 text-sm text-cafe-text placeholder-cafe-textMuted"
+                                placeholder={field.placeholder || field.label}
+                                required={field.required}
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })
+                ) : (
+                  // Single account mode: show fields grouped by game
+                  itemsWithCustomFields.map((item) => (
+                    <div key={item.id} className="space-y-4 pb-6 border-b border-cafe-primary/20 last:border-b-0 last:pb-0">
+                      <div className="mb-4 flex items-center gap-4">
+                        {/* Game Icon */}
+                        <div className="flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden bg-gradient-to-br from-cafe-darkCard to-cafe-darkBg">
+                          {item.image ? (
+                            <img
+                              src={item.image}
+                              alt={item.name}
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                e.currentTarget.style.display = 'none';
+                                e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                              }}
+                            />
+                          ) : null}
+                          <div className={`w-full h-full flex items-center justify-center ${item.image ? 'hidden' : ''}`}>
+                            <div className="text-2xl opacity-20 text-gray-400">🎮</div>
+                          </div>
+                        </div>
+                        
+                        {/* Game Title and Description */}
+                        <div className="flex-1 min-w-0">
+                          <h3 className="text-lg font-semibold text-cafe-text">{item.name}</h3>
+                          <p className="text-sm text-cafe-textMuted">Please provide the following information for this game</p>
+                        </div>
+                      </div>
+                      {item.customFields?.map((field) => {
+                        const originalId = getOriginalMenuItemId(item.id);
+                        const valueKey = `${originalId}_${field.key}`;
+                        return (
+                          <div key={valueKey}>
+                            <label className="block text-sm font-medium text-cafe-text mb-2">
+                              {field.label} {field.required && <span className="text-red-500">*</span>}
+                            </label>
+                            <input
+                              type="text"
+                              value={customFieldValues[valueKey] || ''}
+                              onChange={(e) => setCustomFieldValues({
+                                ...customFieldValues,
+                                [valueKey]: e.target.value
+                              })}
+                              className="w-full px-3 py-2 glass border border-cafe-primary/30 rounded-lg focus:ring-2 focus:ring-cafe-primary focus:border-cafe-primary transition-all duration-200 text-sm text-cafe-text placeholder-cafe-textMuted"
+                              placeholder={field.placeholder || field.label}
+                              required={field.required}
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ))
+                )
               ) : (
                 <div>
                   <label className="block text-sm font-medium text-cafe-text mb-2">
                     IGN <span className="text-red-500">*</span>
                   </label>
-                    <input
-                      id="default-ign-input"
-                      type="text"
-                      name="default_ign"
-                      autoComplete="off"
-                      value={customFieldValues['default_ign'] || ''}
-                      onChange={(e) => {
-                        const newValue = e.target.value;
-                        setCustomFieldValues(prev => ({
-                          ...prev,
-                          ['default_ign']: newValue
-                        }));
-                      }}
-                      className="w-full px-4 py-3 glass border border-cafe-primary/30 rounded-lg focus:ring-2 focus:ring-cafe-primary focus:border-cafe-primary transition-all duration-200 text-cafe-text placeholder-cafe-textMuted"
-                      placeholder="In game name"
-                      required
-                    />
+                  <input
+                    type="text"
+                    value={customFieldValues['default_ign'] || ''}
+                    onChange={(e) => setCustomFieldValues({
+                      ...customFieldValues,
+                      ['default_ign']: e.target.value
+                    })}
+                    className="w-full px-3 py-2 glass border border-cafe-primary/30 rounded-lg focus:ring-2 focus:ring-cafe-primary focus:border-cafe-primary transition-all duration-200 text-sm text-cafe-text placeholder-cafe-textMuted"
+                    placeholder="In game name"
+                    required
+                  />
                 </div>
               )}
 
-              <button
-                onClick={handleProceedToPayment}
-                disabled={!isDetailsValid}
-                className={`w-full py-4 rounded-xl font-medium text-lg transition-all duration-200 transform ${
-                  isDetailsValid
-                    ? 'text-white hover:opacity-90 hover:scale-[1.02]'
-                    : 'glass text-cafe-textMuted cursor-not-allowed'
-                }`}
-                style={isDetailsValid ? { backgroundColor: '#00CED1' } : {}}
-              >
-                Proceed to Payment
-              </button>
             </form>
           </div>
-
-          {/* Order Summary */}
-          <div className="glass-card rounded-xl p-6">
-            <h2 className="text-2xl font-medium text-cafe-text mb-6">Order Summary</h2>
-            
-            <div className="space-y-4 mb-6">
-              {cartItems.map((item) => (
-                <div key={item.id} className="flex items-center justify-between py-2 border-b border-cafe-primary/30">
-                  <div>
-                    <h4 className="font-medium text-cafe-text">{item.name}</h4>
-                    {item.selectedVariation && (
-                      <p className="text-sm text-cafe-textMuted">Package: {item.selectedVariation.name}</p>
-                    )}
-                    {item.selectedAddOns && item.selectedAddOns.length > 0 && (
-                      <p className="text-sm text-cafe-textMuted">
-                        Add-ons: {item.selectedAddOns.map(addOn => addOn.name).join(', ')}
-                      </p>
-                    )}
-                    <p className="text-sm text-cafe-textMuted">₱{item.totalPrice} x {item.quantity}</p>
-                  </div>
-                  <span className="font-semibold text-cafe-text">₱{item.totalPrice * item.quantity}</span>
-                </div>
-              ))}
-            </div>
-            
-            <div className="border-t border-cafe-primary/30 pt-4">
-              <div className="flex items-center justify-between text-2xl font-semibold text-cafe-text">
-                <span>Total:</span>
-                <span className="text-cafe-text">₱{totalPrice}</span>
-              </div>
-            </div>
-            
-          </div>
         </div>
-      </div>
-        {renderOrderStatusModal()}
-      </>
-    );
-  }
 
-  // Payment Step
-  if (step === 'payment') {
-    return (
-      <>
-    <div className="max-w-4xl mx-auto px-4 py-8">
-      <div className="flex items-center mb-8">
-        <button
-          onClick={() => setStep('details')}
-          className="flex items-center text-cafe-textMuted hover:text-cafe-primary transition-colors duration-200"
-        >
-          <ArrowLeft className="h-5 w-5" />
-        </button>
-        <h1 className="text-3xl font-semibold text-cafe-text text-center flex-1">Payment</h1>
-      </div>
+        {/* Separator */}
+        <div className="border-t border-cafe-primary/30 my-6"></div>
 
-      <div className="max-w-2xl mx-auto">
-        {/* Payment Method Selection */}
-        <div className="glass-card rounded-xl p-6">
-          <h2 className="text-2xl font-medium text-cafe-text mb-6">Choose Payment Method</h2>
+        {/* Payment Section */}
+        <div>
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-6 h-6 rounded-full bg-cafe-primary text-white flex items-center justify-center text-xs font-bold flex-shrink-0">
+              2
+            </div>
+            <h2 className="text-sm font-medium text-cafe-text">Choose Payment Method</h2>
+          </div>
           
-          <div className="grid grid-cols-3 gap-3 md:gap-4 mb-6">
-            {paymentMethods.map((method) => (
+          <div className="grid grid-cols-6 gap-1 md:gap-2 mb-6">
+            {paymentMethods
+              .filter((method) => {
+                // Filter payment methods based on max_order_amount
+                // If max_order_amount is set (e.g., 6000), only show if order total is less than that amount
+                if (method.max_order_amount !== null && method.max_order_amount !== undefined) {
+                  return totalPrice < method.max_order_amount;
+                }
+                // If no max_order_amount is set, show for all orders
+                return true;
+              })
+              .map((method) => (
               <button
                 key={method.id}
                 type="button"
                 onClick={() => {
-                  setPaymentMethod(method.id as PaymentMethod);
+                  setPaymentMethod(method);
+                  setShowPaymentDetailsModal(true);
                 }}
-                className={`p-2 md:p-3 rounded-xl border-2 transition-all duration-200 flex flex-col items-center justify-center gap-2 ${
-                  paymentMethod === method.id
-                    ? 'border-transparent text-white'
-                    : 'glass border-cafe-primary/30 text-cafe-text hover:border-cafe-primary hover:glass-strong'
+                className={`rounded-lg border-2 transition-all duration-200 flex flex-col overflow-hidden ${
+                  paymentMethod?.id === method.id
+                    ? 'border-transparent'
+                    : 'glass border-cafe-primary/30 hover:border-cafe-primary hover:glass-strong'
                 }`}
-                style={paymentMethod === method.id ? { backgroundColor: '#00CED1' } : {}}
+                style={paymentMethod?.id === method.id ? { backgroundColor: '#1E7ACB' } : {}}
               >
-                {/* Icon on Top */}
-                <div className="relative w-12 h-12 md:w-14 md:h-14 flex-shrink-0 rounded-lg overflow-hidden bg-gradient-to-br from-cafe-darkCard to-cafe-darkBg flex items-center justify-center">
-                  <span className="text-xl md:text-2xl">💳</span>
+                {/* Icon fills the card */}
+                <div className="relative w-full aspect-square flex-shrink-0 overflow-hidden bg-gradient-to-br from-cafe-darkCard to-cafe-darkBg rounded-lg">
+                  {method.icon_url ? (
+                    <img
+                      src={method.icon_url}
+                      alt={method.name}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <span className="text-2xl md:text-4xl">💳</span>
+                    </div>
+                  )}
                 </div>
-                {/* Text Below */}
-                <span className="font-medium text-xs md:text-sm text-center">{method.name}</span>
               </button>
             ))}
           </div>
 
-          {/* Payment Details with QR Code */}
-          {selectedPaymentMethod && (
-            <div 
-              ref={paymentDetailsRef}
-              className="glass-strong rounded-lg p-6 mb-6 border border-cafe-primary/30"
-            >
-              <h3 className="font-medium text-cafe-text mb-4">Payment Details</h3>
-              <div className="space-y-4">
-                {/* Payment Method Name */}
+
+          {/* Receipt Upload Section */}
+          <div className="mb-6">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-6 h-6 rounded-full bg-cafe-primary text-white flex items-center justify-center text-xs font-bold flex-shrink-0">
+                3
+              </div>
+              <label className="text-sm font-medium text-cafe-text">
+                Payment Receipt <span className="text-red-400">*</span>
+              </label>
+            </div>
+            
+            {!receiptPreview ? (
+              <div className="relative glass border-2 border-dashed border-cafe-primary/30 rounded-lg p-6 text-center hover:border-cafe-primary transition-colors duration-200">
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      handleReceiptUpload(file);
+                    }
+                  }}
+                  className="hidden"
+                  id="receipt-upload"
+                  disabled={uploadingReceipt}
+                />
+                <label
+                  htmlFor="receipt-upload"
+                  className={`cursor-pointer flex flex-col items-center space-y-2 ${uploadingReceipt ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                  {uploadingReceipt ? (
+                    <>
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-cafe-primary"></div>
+                      <span className="text-sm text-cafe-textMuted">Uploading...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="h-8 w-8 text-cafe-primary" />
+                      <span className="text-sm text-cafe-text">Click to upload receipt</span>
+                      <span className="text-xs text-cafe-textMuted">JPEG, PNG, WebP, or GIF (Max 5MB)</span>
+                    </>
+                  )}
+                </label>
+              </div>
+            ) : (
+              <div className="relative glass border border-cafe-primary/30 rounded-lg p-4">
+                <div className="absolute top-2 left-2 w-6 h-6 rounded-full bg-cafe-primary text-white flex items-center justify-center text-xs font-bold">
+                  1
+                </div>
+                <div className="flex items-center space-x-4">
+                  <div className="flex-shrink-0">
+                    <img
+                      src={receiptPreview}
+                      alt="Receipt preview"
+                      className="w-20 h-20 object-cover rounded-lg border border-cafe-primary/30"
+                    />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-cafe-text truncate">
+                      {receiptFile?.name || 'Receipt uploaded'}
+                    </p>
+                    <p className="text-xs text-cafe-textMuted">
+                      {receiptImageUrl ? '✓ Uploaded successfully' : 'Uploading...'}
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleReceiptRemove}
+                    className="flex-shrink-0 p-2 glass-strong rounded-lg hover:bg-red-500/20 transition-colors duration-200"
+                    disabled={uploadingReceipt}
+                  >
+                    <X className="h-4 w-4 text-cafe-text" />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {receiptError && (
+              <p className="mt-2 text-sm text-red-400">{receiptError}</p>
+            )}
+
+            <p className="text-xs text-cafe-textMuted text-center mt-3">
+              Please upload a screenshot of your payment receipt. This helps us verify and process your order quickly.
+            </p>
+          </div>
+        </div>
+
+        {/* Separator */}
+        <div className="border-t border-cafe-primary/30 my-6"></div>
+
+      {/* Place Order Section */}
+      <div>
+        <div ref={buttonsRef}>
+          {orderOption === 'order_via_messenger' ? (
+            <>
+              {/* Copy button - must be clicked before placing order */}
+              <button
+                onClick={handleCopyMessage}
+                disabled={uploadingReceipt || !paymentMethod || !receiptImageUrl}
+                className={`relative w-full py-3 rounded-xl font-medium transition-all duration-200 transform mb-3 flex items-center justify-center space-x-2 ${
+                  !uploadingReceipt && paymentMethod && receiptImageUrl
+                    ? 'glass border border-cafe-primary/30 text-cafe-text hover:border-cafe-primary hover:glass-strong'
+                    : 'glass border border-cafe-primary/20 text-cafe-textMuted cursor-not-allowed'
+                }`}
+              >
+                <div className={`absolute top-2 left-2 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+                  !uploadingReceipt && paymentMethod && receiptImageUrl
+                    ? 'bg-cafe-primary text-white'
+                    : 'bg-cafe-textMuted/30 text-cafe-textMuted'
+                }`}>
+                  4
+                </div>
+                {copied ? (
+                  <>
+                    <Check className="h-5 w-5" />
+                    <span>Copied!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="h-5 w-5" />
+                    <span>Copy Order Message</span>
+                  </>
+                )}
+              </button>
+
+              {/* Place Order button - requires payment method, receipt, and copy button to be clicked */}
+              <button
+                onClick={handlePlaceOrder}
+                disabled={!paymentMethod || !receiptImageUrl || uploadingReceipt || !hasCopiedMessage}
+                className={`relative w-full py-4 rounded-xl font-medium text-lg transition-all duration-200 transform ${
+                  paymentMethod && receiptImageUrl && !uploadingReceipt && hasCopiedMessage
+                    ? 'text-white hover:opacity-90 hover:scale-[1.02]'
+                    : 'glass text-cafe-textMuted cursor-not-allowed'
+                }`}
+                style={paymentMethod && receiptImageUrl && !uploadingReceipt && hasCopiedMessage ? { backgroundColor: '#1E7ACB' } : {}}
+              >
+                <div className={`absolute top-2 left-2 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+                  paymentMethod && receiptImageUrl && !uploadingReceipt && hasCopiedMessage
+                    ? 'bg-cafe-primary text-white'
+                    : 'bg-cafe-textMuted/30 text-cafe-textMuted'
+                }`}>
+                  5
+                </div>
+                {uploadingReceipt ? 'Uploading Receipt...' : 'Order via Messenger'}
+              </button>
+              
+              <p className="text-xs text-cafe-textMuted text-center mt-3">
+                You'll be redirected to Facebook Messenger to confirm your order. Your receipt has been uploaded and will be included in the message.
+              </p>
+            </>
+          ) : (
+            <>
+              {/* Place Order button - for place_order option */}
+              <button
+                onClick={handlePlaceOrderDirect}
+                disabled={!paymentMethod || !receiptImageUrl || uploadingReceipt || isPlacingOrder}
+                className={`relative w-full py-4 rounded-xl font-medium text-lg transition-all duration-200 transform ${
+                  paymentMethod && receiptImageUrl && !uploadingReceipt && !isPlacingOrder
+                    ? 'text-white hover:opacity-90 hover:scale-[1.02]'
+                    : 'glass text-cafe-textMuted cursor-not-allowed'
+                }`}
+                style={paymentMethod && receiptImageUrl && !uploadingReceipt && !isPlacingOrder ? { backgroundColor: '#1E7ACB' } : {}}
+              >
+                <div className={`absolute top-2 left-2 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+                  paymentMethod && receiptImageUrl && !uploadingReceipt && !isPlacingOrder
+                    ? 'bg-cafe-primary text-white'
+                    : 'bg-cafe-textMuted/30 text-cafe-textMuted'
+                }`}>
+                  4
+                </div>
+                {isPlacingOrder ? 'Placing Order...' : 'Place Order'}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Payment Details Modal */}
+      {showPaymentDetailsModal && selectedPaymentMethod && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="glass-card rounded-xl p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-2xl font-semibold text-cafe-text">Payment Details</h3>
+              <button
+                onClick={() => setShowPaymentDetailsModal(false)}
+                className="p-2 glass-strong rounded-lg hover:bg-cafe-primary/20 transition-colors duration-200"
+              >
+                <X className="h-5 w-5 text-cafe-text" />
+              </button>
+            </div>
+
+            <p className="text-xs text-cafe-textMuted mb-6">
+              Press the copy button to copy the number or download the QR code, make a payment, then proceed to upload your receipt.
+            </p>
+
+            <div className="space-y-4">
+              {/* Payment Method Name and Amount */}
+              <div className="flex items-center justify-between">
+                <p className="text-lg font-semibold text-cafe-text">{selectedPaymentMethod.name}</p>
+                <p className="text-xl font-semibold text-white">₱{totalPrice}</p>
+              </div>
+              
+              {/* Account Number and Account Name in one row */}
+              <div className="grid grid-cols-2 gap-4">
+                {/* Account Number with Copy Button */}
                 <div>
-                  <p className="text-lg font-semibold text-cafe-text">{selectedPaymentMethod.name}</p>
+                  <div className="flex items-center gap-2 mb-1">
+                    <p className="text-sm text-cafe-textMuted">Number:</p>
+                    <button
+                      onClick={() => handleCopyAccountNumber(selectedPaymentMethod.account_number)}
+                      className="p-1.5 glass-strong rounded-lg hover:bg-cafe-primary/20 transition-colors duration-200 flex-shrink-0"
+                      title="Copy account number"
+                    >
+                      {copiedAccountNumber ? (
+                        <Check className="h-3.5 w-3.5 text-green-400" />
+                      ) : (
+                        <Copy className="h-3.5 w-3.5 text-cafe-text" />
+                      )}
+                    </button>
+                  </div>
+                  <p className="font-mono text-cafe-text font-medium text-sm">{selectedPaymentMethod.account_number}</p>
                 </div>
                 
                 {/* Account Name with Copy Button */}
                 <div>
                   <div className="flex items-center gap-2 mb-1">
-                    <p className="text-sm text-cafe-textMuted">Account Name:</p>
+                    <p className="text-sm text-cafe-textMuted">Name:</p>
                     <button
                       onClick={() => handleCopyAccountName(selectedPaymentMethod.account_name)}
-                      className="px-3 py-1.5 glass-strong rounded-lg hover:bg-cafe-primary/20 transition-colors duration-200 flex-shrink-0 text-sm font-medium"
+                      className="p-1.5 glass-strong rounded-lg hover:bg-cafe-primary/20 transition-colors duration-200 flex-shrink-0"
                       title="Copy account name"
                     >
                       {copiedAccountName ? (
-                        <span className="text-green-400">Copied!</span>
+                        <Check className="h-3.5 w-3.5 text-green-400" />
                       ) : (
-                        <span className="text-cafe-text">Copy</span>
+                        <Copy className="h-3.5 w-3.5 text-cafe-text" />
                       )}
                     </button>
                   </div>
-                  <p className="text-cafe-text font-medium">{selectedPaymentMethod.account_name}</p>
-                </div>
-                
-                {/* Other Option */}
-                <div>
-                  <h3 className="font-medium text-cafe-text text-center">Other Option</h3>
-                </div>
-                
-                {/* Download QR Button and QR Image */}
-                <div className="flex flex-col items-center gap-3">
-                  {selectedPaymentMethod.qr_code_url ? (
-                    <>
-                      {!isMessengerBrowser && (
-                        <button
-                          onClick={() => handleDownloadQRCode(selectedPaymentMethod.qr_code_url, selectedPaymentMethod.name)}
-                          className="px-3 py-1.5 glass-strong rounded-lg hover:bg-cafe-primary/20 transition-colors duration-200 text-sm font-medium text-cafe-text flex items-center gap-2"
-                          title="Download QR code"
-                        >
-                          <Download className="h-4 w-4" />
-                          <span>Download QR</span>
-                        </button>
-                      )}
-                      {isMessengerBrowser && (
-                        <p className="text-xs text-cafe-textMuted text-center">Long-press the QR code to save</p>
-                      )}
-                      <img 
-                        src={selectedPaymentMethod.qr_code_url} 
-                        alt={`${selectedPaymentMethod.name} QR Code`}
-                        className="w-32 h-32 rounded-lg border-2 border-cafe-primary/30 shadow-sm"
-                      />
-                    </>
-                  ) : (
-                    <div className="w-32 h-32 rounded-lg border-2 border-cafe-primary/30 shadow-sm bg-gray-100 flex items-center justify-center p-4">
-                      <p className="text-sm text-cafe-textMuted text-center">QR code not available</p>
-                    </div>
-                  )}
-                </div>
-                
-                {/* Account Number with Copy Button */}
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <p className="text-sm text-cafe-textMuted">Account Number:</p>
-                    <button
-                      onClick={() => handleCopyAccountNumber(selectedPaymentMethod.account_number)}
-                      className="px-3 py-1.5 glass-strong rounded-lg hover:bg-cafe-primary/20 transition-colors duration-200 flex-shrink-0 text-sm font-medium"
-                      title="Copy account number"
-                    >
-                      {copiedAccountNumber ? (
-                        <span className="text-green-400">Copied!</span>
-                      ) : (
-                        <span className="text-cafe-text">Copy</span>
-                      )}
-                    </button>
-                  </div>
-                  <p className="font-mono text-cafe-text font-medium text-xl md:text-2xl">{selectedPaymentMethod.account_number}</p>
-                </div>
-                
-                {/* Amount and Instructions */}
-                <div className="pt-2 border-t border-cafe-primary/20">
-                  <p className="text-xl font-semibold text-cafe-text mb-2">Amount: ₱{totalPrice}</p>
-                  <p className="text-sm text-cafe-textMuted">Press the copy button to copy the account number or download the QR code, make your payment, then click "Confirm" to proceed to the order page where you can upload your payment receipt.</p>
+                  <p className="text-cafe-text font-medium text-sm">{selectedPaymentMethod.account_name}</p>
                 </div>
               </div>
-            </div>
-          )}
-
-          {/* Confirm Button */}
-          <button
-            onClick={handleProceedToOrder}
-            disabled={!paymentMethod}
-            className={`w-full py-4 rounded-xl font-medium text-lg transition-all duration-200 transform mb-6 ${
-              paymentMethod
-                ? 'text-white hover:opacity-90 hover:scale-[1.02]'
-                : 'glass text-cafe-textMuted cursor-not-allowed'
-            }`}
-            style={paymentMethod ? { backgroundColor: '#00CED1' } : {}}
-          >
-            Confirm
-          </button>
-
-          {/* Payment instructions */}
-          <div className="glass border border-cafe-primary/30 rounded-lg p-4">
-            <h4 className="font-medium text-cafe-text mb-2">📸 Payment Proof Required</h4>
-            <p className="text-sm text-cafe-textMuted">
-              After making your payment, you'll be able to upload a screenshot of your payment receipt in the next step. This helps us verify and process your order quickly.
-            </p>
-          </div>
-        </div>
-      </div>
-    </div>
-      {renderOrderStatusModal()}
-      </>
-    );
-  }
-
-  // Order Step
-  if (step === 'order') {
-    return (
-      <>
-      <div className="max-w-4xl mx-auto px-4 py-8">
-        <div className="flex items-center mb-8">
-          <button
-            onClick={() => setStep('payment')}
-            className="flex items-center text-cafe-textMuted hover:text-cafe-primary transition-colors duration-200"
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </button>
-          <h1 className="text-3xl font-semibold text-cafe-text text-center flex-1">Order</h1>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* Final Order Summary */}
-          <div className="glass-card rounded-xl p-6">
-            <h2 className="text-2xl font-medium text-cafe-text mb-6">Final Order Summary</h2>
-            
-            <div className="space-y-4 mb-6">
-              <div className="glass-strong rounded-lg p-4 border border-cafe-primary/30">
-                <h4 className="font-medium text-cafe-text mb-2">Customer Details</h4>
-                {hasAnyCustomFields ? (
-                  itemsWithCustomFields.map((item) => {
-                    const originalId = getOriginalMenuItemId(item.id);
-                    const fields = item.customFields?.map((field, fieldIndex) => {
-                      // Use fieldIndex to ensure uniqueness even if field.key is duplicated
-                      const valueKey = `${originalId}_${fieldIndex}_${field.key}`;
-                      const value = customFieldValues[valueKey];
-                      return value ? (
-                        <p key={valueKey} className="text-sm text-cafe-textMuted">
-                          {field.label}: {value}
-                        </p>
-                      ) : null;
-                    }).filter(Boolean);
-                    
-                    if (!fields || fields.length === 0) return null;
-                    
-                    return (
-                      <div key={item.id} className="mb-3 pb-3 border-b border-cafe-primary/20 last:border-b-0 last:pb-0">
-                        <p className="text-sm font-semibold text-cafe-text mb-1">{item.name}:</p>
-                        {fields}
-                      </div>
-                    );
-                  })
-                ) : (
-                  customFieldValues['default_ign'] && (
-                    <p className="text-sm text-cafe-textMuted">
-                      IGN: {customFieldValues['default_ign']}
-                    </p>
-                  )
-                )}
-                {/* Payment Method Information */}
-                {selectedPaymentMethod && (
-                  <div className="mt-3 pt-3 border-t border-cafe-primary/20">
-                    <p className="text-sm font-semibold text-cafe-text mb-1">Payment Method:</p>
-                    <p className="text-sm text-cafe-textMuted">{selectedPaymentMethod.name}</p>
-                  </div>
-                )}
-              </div>
-
-              {cartItems.map((item) => (
-                <div key={item.id} className="flex items-start gap-4 py-2 border-b border-cafe-primary/30">
-                  <div className="flex-shrink-0 w-12 h-12 rounded-lg overflow-hidden bg-gradient-to-br from-cafe-darkCard to-cafe-darkBg relative">
-                    {item.image ? (
-                      <img
-                        src={item.image}
-                        alt={item.name}
-                        className="w-full h-full object-cover"
-                        onError={(e) => {
-                          e.currentTarget.style.display = 'none';
-                          const fallback = e.currentTarget.parentElement?.querySelector('.fallback-icon');
-                          if (fallback) fallback.classList.remove('hidden');
-                        }}
-                      />
-                    ) : null}
-                    <div className={`absolute inset-0 w-full h-full flex items-center justify-center ${item.image ? 'hidden' : ''} fallback-icon`}>
-                      <div className="text-xl opacity-20 text-gray-400">🎮</div>
-                    </div>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h4 className="font-medium text-cafe-text">{item.name}</h4>
-                    {item.selectedVariation && (
-                      <p className="text-sm text-cafe-textMuted">Package: {item.selectedVariation.name}</p>
-                    )}
-                    {item.selectedAddOns && item.selectedAddOns.length > 0 && (
-                      <p className="text-sm text-cafe-textMuted">
-                        Add-ons: {item.selectedAddOns.map(addOn => 
-                          addOn.quantity && addOn.quantity > 1 
-                            ? `${addOn.name} x${addOn.quantity}`
-                            : addOn.name
-                        ).join(', ')}
-                      </p>
-                    )}
-                    <p className="text-sm text-cafe-textMuted">₱{item.totalPrice} x {item.quantity}</p>
-                  </div>
-                  <div className="flex-shrink-0">
-                    <span className="font-semibold text-cafe-text">₱{item.totalPrice * item.quantity}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-            
-            <div className="pt-4 mb-6">
-              <div className="flex items-center justify-between text-2xl font-semibold text-cafe-text">
-                <span>Total:</span>
-                <span className="text-cafe-text">₱{totalPrice}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Receipt Upload and Place Order */}
-          <div className="glass-card rounded-xl p-6">
-            <h2 className="text-2xl font-medium text-cafe-text mb-6">Payment Receipt</h2>
-            
-            {/* Receipt Upload Section */}
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-cafe-text mb-2">
-                Payment Receipt <span className="text-red-400">*</span>
-              </label>
               
-              {!receiptPreview ? (
-                <div className="relative glass border-2 border-dashed border-cafe-primary/30 rounded-lg p-6 text-center hover:border-cafe-primary transition-colors duration-200">
-                  <div className="absolute top-2 left-2 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold bg-cafe-primary text-white">
-                    1
-                  </div>
-                  <input
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp,image/gif"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) {
-                        handleReceiptUpload(file);
-                      }
-                    }}
-                    className="hidden"
-                    id="receipt-upload"
-                    disabled={uploadingReceipt}
-                  />
-                  <label
-                    htmlFor="receipt-upload"
-                    className={`cursor-pointer flex flex-col items-center space-y-2 ${uploadingReceipt ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  >
-                    {uploadingReceipt ? (
-                      <>
-                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-cafe-primary"></div>
-                        <span className="text-sm text-cafe-textMuted">Uploading...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Upload className="h-8 w-8 text-cafe-primary" />
-                        <span className="text-sm text-cafe-text">Click to upload receipt</span>
-                        <span className="text-xs text-cafe-textMuted">JPEG, PNG, WebP, or GIF (Max 5MB)</span>
-                      </>
-                    )}
-                  </label>
-                </div>
-              ) : (
-                <div className="relative glass border border-cafe-primary/30 rounded-lg p-4">
-                  <div className="absolute top-2 left-2 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold bg-cafe-primary text-white">
-                    1
-                  </div>
-                  <div className="flex items-center space-x-4">
-                    <div className="flex-shrink-0">
-                      <img
-                        src={receiptPreview}
-                        alt="Receipt preview"
-                        className="w-20 h-20 object-cover rounded-lg border border-cafe-primary/30"
-                      />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-cafe-text truncate">
-                        {receiptFile?.name || 'Receipt uploaded'}
-                      </p>
-                      <p className="text-xs text-cafe-textMuted">
-                        {receiptImageUrl ? '✓ Uploaded successfully' : 'Uploading...'}
-                      </p>
-                    </div>
-                    <button
-                      onClick={handleReceiptRemove}
-                      className="flex-shrink-0 p-2 glass-strong rounded-lg hover:bg-red-500/20 transition-colors duration-200"
-                      disabled={uploadingReceipt}
-                    >
-                      <X className="h-4 w-4 text-cafe-text" />
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {receiptError && (
-                <p className="mt-2 text-sm text-red-400">{receiptError}</p>
-              )}
-            </div>
-
-            <div ref={buttonsRef}>
-              {/* Copy button - only show for order_via_messenger */}
-              {orderOption === 'order_via_messenger' && (
-                <button
-                  onClick={handleCopyMessage}
-                  disabled={uploadingReceipt || !paymentMethod || !receiptImageUrl}
-                  className={`w-full py-3 rounded-xl font-medium transition-all duration-200 transform mb-3 flex items-center justify-center space-x-2 ${
-                    !uploadingReceipt && paymentMethod && receiptImageUrl
-                      ? 'glass border border-cafe-primary/30 text-cafe-text hover:border-cafe-primary hover:glass-strong'
-                      : 'glass border border-cafe-primary/20 text-cafe-textMuted cursor-not-allowed'
-                  }`}
-                >
-                  {copied ? (
-                    <>
-                      <Check className="h-5 w-5" />
-                      <span>Copied!</span>
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="h-5 w-5" />
-                      <span>Copy Order Message</span>
-                    </>
-                  )}
-                </button>
-              )}
-
-              {/* Order placement buttons - different based on order_option */}
-              {orderOption === 'place_order' ? (
-                <>
-                  {/* Direct Order Placement */}
-                  {existingOrderStatus && existingOrderStatus !== 'approved' && existingOrderStatus !== 'rejected' && (
-                    <button
-                      onClick={() => setIsOrderModalOpen(true)}
-                      className="w-full py-4 rounded-xl font-medium text-lg transition-all duration-200 transform text-white hover:opacity-90 hover:scale-[1.02]"
-                      style={{ backgroundColor: '#00CED1' }}
-                    >
-                      <div className="absolute top-2 left-2 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold bg-cafe-primary text-white">
-                        2
-                      </div>
-                      <div className="flex items-center justify-center gap-2">
-                        <Eye className="h-5 w-5" />
-                        View Order
-                      </div>
-                    </button>
-                  )}
-                  {(!existingOrderStatus || existingOrderStatus === 'rejected') && (
-                    <button
-                      onClick={handlePlaceOrderDirect}
-                      disabled={!paymentMethod || !receiptImageUrl || uploadingReceipt || isPlacingOrder}
-                      className={`relative w-full py-4 rounded-xl font-medium text-lg transition-all duration-200 transform ${
-                        paymentMethod && receiptImageUrl && !uploadingReceipt && !isPlacingOrder
-                          ? 'text-white hover:opacity-90 hover:scale-[1.02]'
-                          : 'glass text-cafe-textMuted cursor-not-allowed'
-                      }`}
-                      style={paymentMethod && receiptImageUrl && !uploadingReceipt && !isPlacingOrder ? { backgroundColor: '#00CED1' } : {}}
-                    >
-                      <div className={`absolute top-2 left-2 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-                        paymentMethod && receiptImageUrl && !uploadingReceipt && !isPlacingOrder
-                          ? 'bg-cafe-primary text-white'
-                          : 'bg-cafe-textMuted/30 text-cafe-textMuted'
-                      }`}>
-                        2
-                      </div>
-                      {isPlacingOrder ? 'Placing Order...' : existingOrderStatus === 'rejected' ? 'Order Again' : 'Place Order'}
-                    </button>
-                  )}
-                  <p className="text-xs text-cafe-textMuted text-center mt-3">
-                    Your order will be processed directly. You can track its status after placing the order.
-                  </p>
-                </>
-              ) : (
-                <>
-                  {/* Messenger Order Placement */}
+              {/* Other Option */}
+              <div>
+                <h3 className="font-medium text-cafe-text text-center">Other Option</h3>
+              </div>
+              
+              {/* Download QR Button and QR Image */}
+              {selectedPaymentMethod.qr_code_url ? (
+              <div className="flex flex-col items-center gap-3">
+                {!isMessengerBrowser && (
                   <button
-                    onClick={handlePlaceOrder}
-                    disabled={!paymentMethod || !receiptImageUrl || uploadingReceipt || !hasCopiedMessage}
-                    className={`w-full py-4 rounded-xl font-medium text-lg transition-all duration-200 transform ${
-                      paymentMethod && receiptImageUrl && !uploadingReceipt && hasCopiedMessage
-                        ? 'text-white hover:opacity-90 hover:scale-[1.02]'
-                        : 'glass text-cafe-textMuted cursor-not-allowed'
-                    }`}
-                    style={paymentMethod && receiptImageUrl && !uploadingReceipt && hasCopiedMessage ? { backgroundColor: '#00CED1' } : {}}
+                    onClick={() => handleDownloadQRCode(selectedPaymentMethod.qr_code_url, selectedPaymentMethod.name)}
+                    className="px-3 py-1.5 glass-strong rounded-lg hover:bg-cafe-primary/20 transition-colors duration-200 text-sm font-medium text-cafe-text flex items-center gap-2"
+                    title="Download QR code"
                   >
-                    {uploadingReceipt ? 'Uploading Receipt...' : 'Place Order via Messenger'}
+                    <Download className="h-4 w-4" />
+                    <span>Download QR</span>
                   </button>
-                  
-                  <p className="text-xs text-cafe-textMuted text-center mt-3">
-                    You'll be redirected to Facebook Messenger to confirm your order. Your receipt has been uploaded and will be included in the message.
-                  </p>
-                </>
+                )}
+                {isMessengerBrowser && (
+                  <p className="text-xs text-cafe-textMuted text-center">Long-press the QR code to save</p>
+                )}
+                <img 
+                  src={selectedPaymentMethod.qr_code_url} 
+                  alt={`${selectedPaymentMethod.name} QR Code`}
+                  className="w-32 h-32 rounded-lg border-2 border-cafe-primary/30 shadow-sm"
+                  onError={(e) => {
+                    e.currentTarget.src = 'https://images.pexels.com/photos/8867482/pexels-photo-8867482.jpeg?auto=compress&cs=tinysrgb&w=300&h=300&fit=crop';
+                  }}
+                />
+              </div>
+              ) : (
+                <div className="flex flex-col items-center gap-3">
+                  <div className="w-32 h-32 rounded-lg border-2 border-cafe-primary/30 shadow-sm bg-cafe-darkCard flex items-center justify-center">
+                    <p className="text-xs text-cafe-textMuted text-center">No QR Code Available</p>
+                  </div>
+                </div>
               )}
             </div>
           </div>
         </div>
-      </div>
-        {renderOrderStatusModal()}
-      </>
-    );
-  }
+      )}
 
-  return null;
+      {/* Order Status Modal */}
+      <OrderStatusModal
+        orderId={orderId}
+        isOpen={isOrderModalOpen}
+        onClose={() => setIsOrderModalOpen(false)}
+        onSucceededClose={onNavigateToMenu}
+      />
+    </div>
+  );
 };
 
 export default Checkout;
