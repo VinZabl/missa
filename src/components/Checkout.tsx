@@ -798,16 +798,18 @@ const Checkout: React.FC<CheckoutProps> = ({ cartItems, totalPrice, onBack, onNa
       // Save order to database if not already saved
       saveOrderToDb();
 
-      // Detect iOS - use execCommand directly for better compatibility
+      // Detect iOS and Mac - use execCommand directly for better compatibility
       const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
                     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      const isMac = /Mac/.test(navigator.platform) || /MacIntel|MacPPC|Mac68K/.test(navigator.platform);
+      const needsSyncCopy = isIOS || isMac;
       
-      // For iOS, we need to copy synchronously within user gesture
+      // For iOS and Mac, we need to copy synchronously within user gesture
       // So we generate message first, then copy immediately
       let message: string;
       
-      if (isIOS) {
-        // On iOS, we MUST copy synchronously within the user gesture
+      if (needsSyncCopy) {
+        // On iOS/Mac, we MUST copy synchronously within the user gesture
         // Use existing state first, then calculate optimistically, copy immediately
         const { dateString: todayStr, dayOfMonth } = getPhilippineDate();
         
@@ -841,12 +843,12 @@ const Checkout: React.FC<CheckoutProps> = ({ cartItems, totalPrice, onBack, onNa
         textarea.setAttribute('contenteditable', 'true');
         document.body.appendChild(textarea);
         
-        // Focus and select for iOS
+        // Focus and select for iOS/Mac
         textarea.focus();
         textarea.select();
         textarea.setSelectionRange(0, message.length);
         
-        // Try execCommand first (works better on iOS)
+        // Try execCommand first (works better on iOS/Mac)
         let successful = false;
         try {
           successful = document.execCommand('copy');
@@ -870,7 +872,7 @@ const Checkout: React.FC<CheckoutProps> = ({ cartItems, totalPrice, onBack, onNa
             setInvoiceNumberDate(todayStr);
           }).catch(console.error);
         } else {
-          // Fallback: try clipboard API (may not work on older iOS)
+          // Fallback: try clipboard API (may not work on older iOS/Mac)
           try {
             await navigator.clipboard.writeText(message);
             setCopied(true);
@@ -883,12 +885,12 @@ const Checkout: React.FC<CheckoutProps> = ({ cartItems, totalPrice, onBack, onNa
               setInvoiceNumberDate(todayStr);
             }).catch(console.error);
           } catch (clipboardError) {
-            console.error('Failed to copy message on iOS:', clipboardError);
+            console.error('Failed to copy message on iOS/Mac:', clipboardError);
             alert('Failed to copy. Please try again or copy manually.');
           }
         }
       } else {
-        // For non-iOS, use async approach
+        // For non-iOS/Mac, use async approach
         message = await generateOrderMessage(true);
         
         try {
