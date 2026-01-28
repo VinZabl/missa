@@ -44,8 +44,8 @@ const SubNav: React.FC<SubNavProps> = ({ selectedCategory, onCategoryClick, sear
                     : 'bg-transparent border-cafe-primary/30 hover:border-cafe-primary hover:bg-cafe-primary/10'
                 }`}
                 style={isSearchFocused || searchQuery 
-                  ? { backgroundColor: '#00CED1', color: 'white' } 
-                  : { color: '#00CED1' }
+                  ? { backgroundColor: '#8F1EAE', color: 'white' } 
+                  : { borderColor: 'rgba(143, 30, 174, 0.3)', color: 'rgba(143, 30, 174, 0.9)' }
                 }
               />
               {searchQuery && (
@@ -74,9 +74,9 @@ const SubNav: React.FC<SubNavProps> = ({ selectedCategory, onCategoryClick, sear
                   className={`px-3 py-1.5 rounded-full text-sm transition-all duration-200 border flex-shrink-0 whitespace-nowrap ${
                     selectedCategory === 'all'
                       ? 'text-white border-transparent'
-                      : 'bg-transparent text-cafe-text border-cafe-primary/30 hover:border-cafe-primary hover:bg-white/50'
+                      : 'bg-transparent text-cafe-text border-cafe-primary/30 hover:border-cafe-primary hover:bg-cafe-primary/10'
                   }`}
-                  style={selectedCategory === 'all' ? { backgroundColor: '#00CED1' } : {}}
+                  style={selectedCategory === 'all' ? { backgroundColor: '#8F1EAE' } : {}}
                 >
                   All
                 </button>
@@ -86,9 +86,9 @@ const SubNav: React.FC<SubNavProps> = ({ selectedCategory, onCategoryClick, sear
                     className={`px-3 py-1.5 rounded-full text-sm transition-all duration-200 border flex-shrink-0 whitespace-nowrap ${
                       selectedCategory === 'popular'
                         ? 'text-white border-transparent'
-                        : 'bg-transparent text-cafe-text border-cafe-primary/30 hover:border-cafe-primary hover:bg-white/50'
+                        : 'bg-transparent text-cafe-text border-cafe-primary/30 hover:border-cafe-primary hover:bg-cafe-primary/10'
                     }`}
-                    style={selectedCategory === 'popular' ? { backgroundColor: '#00CED1' } : {}}
+                    style={selectedCategory === 'popular' ? { backgroundColor: '#8F1EAE' } : {}}
                   >
                     Popular
                   </button>
@@ -100,9 +100,9 @@ const SubNav: React.FC<SubNavProps> = ({ selectedCategory, onCategoryClick, sear
                     className={`px-3 py-1.5 rounded-full text-sm transition-all duration-200 border flex-shrink-0 whitespace-nowrap ${
                       selectedCategory === c.id
                         ? 'text-white border-transparent'
-                        : 'bg-transparent text-cafe-text border-cafe-primary/30 hover:border-cafe-primary hover:bg-white/50'
+                        : 'bg-transparent text-cafe-text border-cafe-primary/30 hover:border-cafe-primary hover:bg-cafe-primary/10'
                     }`}
-                    style={selectedCategory === c.id ? { backgroundColor: '#00CED1' } : {}}
+                    style={selectedCategory === c.id ? { backgroundColor: '#8F1EAE' } : {}}
                   >
                     {c.name}
                   </button>

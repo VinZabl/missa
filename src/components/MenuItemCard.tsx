@@ -166,18 +166,18 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({
         onClick={handleCardClick}
         className={`relative flex flex-col transition-all duration-300 group rounded-xl overflow-hidden ${!item.available ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
         style={{
-          border: '1px solid rgba(0, 206, 209, 0.3)',
+          border: '1px solid rgba(143, 30, 174, 0.3)',
           boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
         }}
         onMouseEnter={(e) => {
           if (item.available) {
-            e.currentTarget.style.borderColor = 'rgba(0, 206, 209, 0.6)';
-            e.currentTarget.style.boxShadow = '0 0 20px rgba(0, 206, 209, 0.4), 0 8px 32px 0 rgba(0, 0, 0, 0.37)';
+            e.currentTarget.style.borderColor = 'rgba(143, 30, 174, 0.6)';
+            e.currentTarget.style.boxShadow = '0 0 20px rgba(143, 30, 174, 0.4), 0 8px 32px 0 rgba(0, 0, 0, 0.37)';
           }
         }}
         onMouseLeave={(e) => {
           if (item.available) {
-            e.currentTarget.style.borderColor = 'rgba(0, 206, 209, 0.3)';
+            e.currentTarget.style.borderColor = 'rgba(143, 30, 174, 0.3)';
             e.currentTarget.style.boxShadow = '0 4px 6px rgba(0, 0, 0, 0.1)';
           }
         }}
@@ -189,12 +189,8 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({
           </div>
         )}
         
-        {/* Game Icon - expands into subtitle space when no subtitle */}
-        <div
-          className={`relative w-full overflow-hidden rounded-t-xl bg-gradient-to-br from-cafe-darkCard to-cafe-darkBg transition-transform duration-300 group-hover:scale-105 ${
-            item.subtitle ? 'aspect-square' : 'aspect-[1/1.25]'
-          }`}
-        >
+        {/* Game Icon - full space for image; title + subtitle overlaid at bottom (no separate bar) */}
+        <div className="relative w-full aspect-[1/1.35] overflow-hidden rounded-xl bg-gradient-to-br from-cafe-darkCard to-cafe-darkBg transition-transform duration-300 group-hover:scale-105">
           {item.image ? (
             <img
               src={item.image}
@@ -211,11 +207,11 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({
           <div className={`absolute inset-0 flex items-center justify-center ${item.image ? 'hidden' : ''}`}>
             <div className="text-4xl opacity-20 text-gray-400">🎮</div>
           </div>
-          {/* Game Title Overlay on Icon */}
-          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent pt-8 pb-2 px-2">
+          {/* Title + subtitle overlaid at bottom (image fills entire card) */}
+          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/95 via-black/70 to-transparent pt-10 pb-3 px-2 min-h-[4rem] flex flex-col items-center justify-end">
             <h4 
               ref={nameRef}
-              className={`text-white font-bold text-sm sm:text-base text-center line-clamp-2 ${
+              className={`text-white font-bold text-sm sm:text-base text-center line-clamp-2 w-full ${
                 shouldScroll ? 'animate-scroll-text' : ''
               }`}
               style={shouldScroll ? {
@@ -231,30 +227,26 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({
                 item.name
               )}
             </h4>
+            {item.subtitle ? (
+              <p
+                ref={subtitleRef}
+                className={`text-xs text-gray-400 text-center whitespace-nowrap w-full mt-0.5 ${
+                  subtitleShouldScroll ? 'animate-scroll-text' : 'overflow-hidden text-ellipsis max-w-full'
+                }`}
+                style={subtitleShouldScroll ? { display: 'inline-block' } : {}}
+              >
+                {subtitleShouldScroll ? (
+                  <>
+                    <span>{item.subtitle}{'\u00A0\u00A0•\u00A0\u00A0'}</span>
+                    <span>{item.subtitle}{'\u00A0\u00A0•\u00A0\u00A0'}</span>
+                  </>
+                ) : (
+                  item.subtitle
+                )}
+              </p>
+            ) : null}
           </div>
         </div>
-        
-        {/* Dark Section Below Icon - Subtitle (one line, seamless scroll loop); only when subtitle exists */}
-        {item.subtitle ? (
-          <div className="w-full bg-[#0A0A0A] px-3 py-2 min-h-[2rem] overflow-hidden flex items-center justify-center">
-            <p
-              ref={subtitleRef}
-              className={`text-xs text-gray-400 text-center whitespace-nowrap ${
-                subtitleShouldScroll ? 'animate-scroll-text' : 'overflow-hidden text-ellipsis max-w-full'
-              }`}
-              style={subtitleShouldScroll ? { display: 'inline-block' } : {}}
-            >
-              {subtitleShouldScroll ? (
-                <>
-                  <span>{item.subtitle}{'\u00A0\u00A0•\u00A0\u00A0'}</span>
-                  <span>{item.subtitle}{'\u00A0\u00A0•\u00A0\u00A0'}</span>
-                </>
-              ) : (
-                item.subtitle
-              )}
-            </p>
-          </div>
-        ) : null}
       </div>
 
       {/* Item Selection Modal - Diginix branding */}
