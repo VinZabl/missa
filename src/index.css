@@ -19,10 +19,10 @@
 }
 
 .glass-card {
-  background: rgba(10, 31, 46, 0.6);
+  background: rgba(20, 10, 30, 0.6);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(96, 165, 250, 0.3);
+  border: 1px solid rgba(143, 30, 174, 0.3);
   box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
 }
 
@@ -32,8 +32,8 @@
 
 .glass-hover:hover {
   background: rgba(255, 255, 255, 0.2);
-  border-color: rgba(96, 165, 250, 0.5);
-  box-shadow: 0 8px 32px 0 rgba(96, 165, 250, 0.2);
+  border-color: rgba(143, 30, 174, 0.5);
+  box-shadow: 0 8px 32px 0 rgba(143, 30, 174, 0.2);
 }
 
 .package-card-hover {
@@ -41,9 +41,9 @@
 }
 
 .package-card-hover:hover {
-  background: #1565A8 !important;
-  border: 2px solid #1565A8 !important;
-  box-shadow: 0 4px 12px 0 rgba(21, 101, 168, 0.4) !important;
+  background: #8F1EAE !important;
+  border: 2px solid #8F1EAE !important;
+  box-shadow: 0 4px 12px 0 rgba(143, 30, 174, 0.4) !important;
   transform: scale(1.02) !important;
 }
 
@@ -54,27 +54,27 @@
   color: white !important;
 }
 
-/* Glow effects for in-game theme */
+/* Glow effects for Miss △ theme */
 .glow-blue {
-  box-shadow: 0 0 20px rgba(96, 165, 250, 0.5);
+  box-shadow: 0 0 20px rgba(143, 30, 174, 0.5);
 }
 
 .glow-blue-strong {
-  box-shadow: 0 0 30px rgba(96, 165, 250, 0.8);
+  box-shadow: 0 0 30px rgba(143, 30, 174, 0.8);
 }
 
 /* Text glow */
 .text-glow {
-  text-shadow: 0 0 10px rgba(96, 165, 250, 0.8);
+  text-shadow: 0 0 10px rgba(143, 30, 174, 0.8);
 }
 
-/* Legacy cafe color helpers (for compatibility) */
+/* Miss △ color helpers */
 .bg-cafe-cream {
-  background-color: #E0F2FE;
+  background-color: #F3E8FF;
 }
 
 .bg-cafe-beige {
-  background-color: #BAE6FD;
+  background-color: #E9D5FF;
 }
 
 .bg-cafe-light {
@@ -82,23 +82,23 @@
 }
 
 .text-cafe-accent {
-  color: #60A5FA;
+  color: #8F1EAE;
 }
 
 .text-cafe-dark {
-  color: #E0F2FE;
+  color: #F3E8FF;
 }
 
 .border-cafe-accent {
-  border-color: #60A5FA;
+  border-color: #8F1EAE;
 }
 
 .border-cafe-latte {
-  border-color: rgba(96, 165, 250, 0.3);
+  border-color: rgba(143, 30, 174, 0.3);
 }
 
 .ring-cafe-accent {
-  --tw-ring-color: #60A5FA;
+  --tw-ring-color: #8F1EAE;
 }
 
 /* Hide scrollbar for mobile nav */
@@ -136,19 +136,18 @@ img {
   max-width: 100%;
 }
 
-/* Scroll text animation for long game names */
+/* Scroll text animation for long game names / subtitles - fast loop */
 @keyframes scroll-text {
   0% {
     transform: translateX(0);
   }
-
   100% {
     transform: translateX(-50%);
   }
 }
 
 .animate-scroll-text {
-  animation: scroll-text 10s linear infinite;
+  animation: scroll-text 5s linear infinite;
   display: inline-block;
   will-change: transform;
 }

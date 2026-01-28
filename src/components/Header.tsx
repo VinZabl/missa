@@ -20,7 +20,7 @@ const Header: React.FC<HeaderProps> = ({ cartItemsCount, onCartClick, onMenuClic
       background: 'rgba(10, 10, 10, 0.9)',
       backdropFilter: 'blur(20px)',
       WebkitBackdropFilter: 'blur(20px)',
-      borderBottom: '1px solid rgba(0, 206, 209, 0.2)'
+      borderBottom: '1px solid rgba(143, 30, 174, 0.2)'
     }}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2 md:py-3">
         <div className="flex items-center justify-between min-h-12 md:min-h-16">
@@ -30,15 +30,20 @@ const Header: React.FC<HeaderProps> = ({ cartItemsCount, onCartClick, onMenuClic
           >
             <img 
               src="/logo.png" 
-              alt="Diginix Logo"
+              alt="Miss △ Logo"
               className="h-10 sm:h-12 md:h-16 w-auto object-contain"
               onError={(e) => {
                 e.currentTarget.style.display = 'none';
               }}
             />
-            <span className="text-base sm:text-lg md:text-xl font-bold text-white whitespace-nowrap">
-              Diginix
-            </span>
+            <div className="flex flex-col items-start">
+              <span className="text-base sm:text-lg md:text-xl font-bold text-white whitespace-nowrap text-left">
+                Miss △
+              </span>
+              <span className="text-xs sm:text-sm text-gray-400 whitespace-nowrap text-left">
+                Discounted Game Credits
+              </span>
+            </div>
           </button>
 
           <div className="flex items-center space-x-2">

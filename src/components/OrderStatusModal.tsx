@@ -215,7 +215,7 @@ const OrderStatusModal: React.FC<OrderStatusModalProps> = ({ orderId, isOpen, on
         {/* Footer */}
         <div className="mt-6 pt-4 border-t border-cafe-primary/20">
           <p className="text-xs text-cafe-textMuted text-center">
-            by Diginix
+            by Miss △
           </p>
         </div>
       </div>

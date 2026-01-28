@@ -5,20 +5,20 @@ export default {
     extend: {
       colors: {
         cafe: {
-          accent: '#00CED1', // Cyan accent (Diginix)
-          accent2: '#E03090', // Pink accent (Diginix)
-          dark: '#0A0A0A', // Off-black background
+          accent: '#8F1EAE', // Purple accent (Miss △)
+          accent2: '#8F1EAE', // Purple accent (Miss △)
+          dark: '#141414', // Off-black background
           cream: '#F5F5F5',
           beige: '#E5E5E5',
           latte: '#D5D5D5',
-          espresso: '#E03090',
+          espresso: '#8F1EAE',
           light: '#1A1A1A',
-          // Diginix theme colors
-          primary: '#00CED1', // Cyan primary
-          secondary: '#E03090', // Pink secondary
-          darkBg: '#0A0A0A', // Off-black main background
+          // Miss △ theme colors
+          primary: '#8F1EAE', // Purple primary
+          secondary: '#A533C6', // Lighter purple secondary
+          darkBg: '#141414', // Off-black main background
           darkCard: '#1A1A1A', // Slightly lighter card background
-          glass: 'rgba(0, 206, 209, 0.1)', // Glass effect with cyan
+          glass: 'rgba(143, 30, 174, 0.1)', // Glass effect with purple
           text: '#FFFFFF', // White text for dark background
           textMuted: '#B0B0B0' // Muted text
         }
