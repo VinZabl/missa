@@ -1376,7 +1376,7 @@ const Checkout: React.FC<CheckoutProps> = ({ cartItems, totalPrice, onBack, onNa
     // If no invoice number exists yet, it will generate one, but ideally Copy should be clicked first
     const orderDetails = await generateOrderMessage(false);
     const encodedMessage = encodeURIComponent(orderDetails);
-    const messengerUrl = `https://m.me/DiginixPh?text=${encodedMessage}`;
+    const messengerUrl = `https://m.me/missadiscounteddias?text=${encodedMessage}`;
     
     window.open(messengerUrl, '_blank');
     
